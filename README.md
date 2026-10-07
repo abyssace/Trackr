@@ -203,4 +203,4 @@ Audit log of every user command, tool called, arguments, and result.
 
 ## License
 
-To be defined.
+

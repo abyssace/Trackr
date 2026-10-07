@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trackr</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      color: #222;
+    }
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: #666; margin-bottom: 1.5rem; }
+    .box {
+      border: 1px solid #ddd;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    input[type="text"], input[type="password"] {
+      padding: 0.5rem;
+      margin-right: 0.5rem;
+      min-width: 180px;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+    }
+    #messages {
+      height: 320px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      background: #fafafa;
+      margin-bottom: 0.75rem;
+    }
+    .msg {
+      margin-bottom: 0.75rem;
+      padding: 0.5rem;
+      border-radius: 0.4rem;
+    }
+    .msg.user {
+      background: #e6f4ea;
+      text-align: right;
+    }
+    .msg.assistant {
+      background: #fff;
+      border: 1px solid #eee;
+    }
+    .msg.system {
+      background: #fff3cd;
+      font-size: 0.9rem;
+    }
+    .row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 0.5rem;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Trackr</h1>
+  <p class="subtitle">Tu negocio, a voz o por chat.</p>
+
+  <div id="loginBox" class="box">
+    <h3>Iniciar sesión</h3>
+    <form id="loginForm">
+      <input type="text" id="username" placeholder="Usuario" required />
+      <input type="password" id="password" placeholder="Contraseña" required />
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="loginError" style="color: #c00;"></p>
+  </div>
+
+  <div id="chatBox" class="box hidden">
+    <div class="row" style="justify-content: space-between; align-items: center;">
+      <h3>Chat</h3>
+      <button id="logoutBtn">Cerrar sesión</button>
+    </div>
+    <div id="messages"></div>
+    <form id="chatForm" class="row">
+      <input type="text" id="messageInput" placeholder="Escribe un mensaje..." autocomplete="off" required />
+      <button type="submit">Enviar</button>
+    </form>
+  </div>
+
+  <script>
+    const loginBox = document.getElementById('loginBox');
+    const chatBox = document.getElementById('chatBox');
+    const loginForm = document.getElementById('loginForm');
+    const chatForm = document.getElementById('chatForm');
+    const messages = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const loginError = document.getElementById('loginError');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let eventSource = null;
+
+    function addMessage(text, role) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function checkSession() {
+      try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (res.ok) {
+          showChat();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function connectEvents() {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource('/api/eventos', { withCredentials: true });
+      eventSource.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.tipo === 'recordatorio') {
+          addMessage(`⏰ Recordatorio: ${data.texto}`, 'system');
+        } else if (data.tipo === 'ping') {
+          // keep-alive, no mostrar
+        }
+      };
+      eventSource.onerror = () => {
+        console.warn('SSE error, reconectando...');
+      };
+    }
+
+    function showChat() {
+      loginBox.classList.add('hidden');
+      chatBox.classList.remove('hidden');
+      connectEvents();
+    }
+
+    function showLogin() {
+      chatBox.classList.add('hidden');
+      loginBox.classList.remove('hidden');
+      if (eventSource) eventSource.close();
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginError.textContent = '';
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      if (res.ok) {
+        showChat();
+      } else {
+        loginError.textContent = 'Credenciales inválidas';
+      }
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = messageInput.value.trim();
+      if (!text) return;
+      addMessage(text, 'user');
+      messageInput.value = '';
+      messageInput.disabled = true;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ mensaje: text }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          addMessage(`Error: ${err.detail || res.statusText}`, 'system');
+        } else {
+          const data = await res.json();
+          addMessage(data.reply, 'assistant');
+        }
+      } catch (err) {
+        addMessage(`Error de red: ${err.message}`, 'system');
+      } finally {
+        messageInput.disabled = false;
+        messageInput.focus();
+      }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+      showLogin();
+    });
+
+    checkSession();
+  </script>
+</body>
+</html>

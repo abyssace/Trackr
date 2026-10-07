@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     SCHEDULER_INTERVAL_SECONDS: int = 10
     CHAT_RATE_LIMIT_PER_MINUTE: int = 60
     MAX_AUDIO_SEGUNDOS: int = 60
+    MEMORIA_MENSAJES_MAX: int = 20
 
-    model_config = ConfigDict(env_file=".env")
+    model_config = ConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

@@ -42,3 +42,13 @@ class ComandosLog(Base):
     args: Mapped[Optional[str]] = mapped_column(String(2000))
     resultado: Mapped[Optional[str]] = mapped_column(String(2000))
     creado_en: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class Mensaje(Base):
+    __tablename__ = "mensajes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), index=True)
+    rol: Mapped[str] = mapped_column(String(20))
+    contenido: Mapped[str] = mapped_column(String(4000))
+    creado_en: Mapped[datetime] = mapped_column(default=utc_now)

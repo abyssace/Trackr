@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.api.deps import get_current_user
 from app.db.base import get_db
-from app.db.modelos import Usuario, ComandosLog
+from app.db.modelos import Usuario, ComandosLog, Mensaje
 from app.agente.agente import run_agent
 from app.agente.tools.recordatorios import make_recordatorio_tools
+from app.servicios.memoria import guardar_mensaje, obtener_historial
 
 router = APIRouter(prefix="/api")
 
@@ -43,15 +44,24 @@ async def chat(
 ):
     _check_rate_limit(usuario.id)
 
+    # Guardar mensaje del usuario primero para que forme parte del historial.
+    guardar_mensaje(db, usuario.id, "user", payload.mensaje)
+
     tools = make_recordatorio_tools(usuario, db)
+    historial = obtener_historial(db, usuario.id)
+    # El mensaje actual ya está en la BD; lo removemos del historial para no duplicarlo.
+    if historial and isinstance(historial[-1].content, str) and historial[-1].content == payload.mensaje:
+        historial = historial[:-1]
 
     try:
-        reply, used_tools = await run_agent(payload.mensaje, tools, usuario)
+        reply, used_tools = await run_agent(payload.mensaje, tools, usuario, historial)
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail=f"El agente no respondió: {exc}",
         )
+
+    guardar_mensaje(db, usuario.id, "assistant", reply)
 
     if used_tools:
         for name, args, result in used_tools:
@@ -77,3 +87,21 @@ async def chat(
 
     db.commit()
     return {"reply": reply}
+
+
+@router.get("/historial")
+async def historial(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    filas = (
+        db.query(Mensaje)
+        .filter(Mensaje.usuario_id == usuario.id, Mensaje.rol.in_(["user", "assistant"]))
+        .order_by(Mensaje.creado_en)
+        .limit(settings.MEMORIA_MENSAJES_MAX)
+        .all()
+    )
+    return [
+        {"rol": f.rol, "contenido": f.contenido, "creado_en": f.creado_en.isoformat()}
+        for f in filas
+    ]

@@ -33,9 +33,13 @@ async def run_agent(
     mensaje: str,
     tools: list[BaseTool],
     usuario,
+    historial: list | None = None,
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """
     Ejecuta un turno del agente.
+
+    Args:
+        historial: lista de mensajes previos (HumanMessage / AIMessage).
 
     Retorna:
         - respuesta final del asistente
@@ -51,10 +55,10 @@ async def run_agent(
     if tools:
         model = model.bind_tools(tools)
 
-    messages = [
-        SystemMessage(content=_system_prompt()),
-        HumanMessage(content=mensaje),
-    ]
+    messages = [SystemMessage(content=_system_prompt())]
+    if historial:
+        messages.extend(historial)
+    messages.append(HumanMessage(content=mensaje))
 
     used_tools: list[tuple[str, str, str]] = []
     response = await model.ainvoke(messages)

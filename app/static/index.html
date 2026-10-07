@@ -116,11 +116,30 @@
       try {
         const res = await fetch('/api/me', { credentials: 'same-origin' });
         if (res.ok) {
-          showChat();
+          await showChat();
         }
       } catch (e) {
         console.error(e);
       }
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/historial', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        messages.innerHTML = '';
+        data.forEach(m => addMessage(m.contenido, m.rol));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function showChat() {
+      loginBox.classList.add('hidden');
+      chatBox.classList.remove('hidden');
+      await loadHistory();
+      connectEvents();
     }
 
     function connectEvents() {
@@ -137,12 +156,6 @@
       eventSource.onerror = () => {
         console.warn('SSE error, reconectando...');
       };
-    }
-
-    function showChat() {
-      loginBox.classList.add('hidden');
-      chatBox.classList.remove('hidden');
-      connectEvents();
     }
 
     function showLogin() {

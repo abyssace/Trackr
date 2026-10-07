@@ -146,6 +146,7 @@ uv run pytest -v
 | `POST` | `/api/logout` | Clear session. |
 | `GET`  | `/api/me` | Current user info. |
 | `POST` | `/api/chat` | Send a text message to the agent. |
+| `GET`  | `/api/historial` | Get the current user's chat history. |
 | `GET`  | `/api/eventos` | SSE stream for reminders. |
 
 ---
@@ -167,6 +168,9 @@ Employees / users. Hashed passwords, active flag.
 ### `comandos_log`
 Audit log of every user command, tool called, arguments, and result.
 
+### `mensajes`
+Per-user chat history used by the agent as conversational memory.
+
 ---
 
 ## Roadmap
@@ -179,7 +183,7 @@ Audit log of every user command, tool called, arguments, and result.
 - [x] Atomic scheduler + SSE
 
 ### Phase 1.5 *(next)*
-- [ ] Conversation memory per session
+- [x] Conversation memory per session
 - [ ] Confirmation step for inventory/order writes
 - [ ] Voice input with Whisper
 

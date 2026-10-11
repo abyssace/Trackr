@@ -75,16 +75,20 @@ Core rules:
 │   │   └── eventos.py          # GET /api/eventos (SSE)
 │   ├── agente/
 │   │   ├── agente.py           # LangChain agent loop
-│   │   └── tools/recordatorios.py
+│   │   └── tools/
+│   │       ├── recordatorios.py
+│   │       └── negocio.py      # read-only inventory/order tools
 │   ├── db/
 │   │   ├── base.py             # engine, session, Base
-│   │   └── modelos.py          # SQLAlchemy models
+│   │   ├── modelos.py          # Trackr auth/chat models
+│   │   └── negocio.py          # business models (clients, orders, inventory)
 │   ├── servicios/
 │   │   ├── scheduler.py        # reminder firing job
 │   │   └── event_queue.py      # per-user SSE queues
 │   └── static/index.html       # minimal chat UI
 ├── scripts/
-│   └── crear_usuario.py        # create the first user
+│   ├── crear_usuario.py        # create the first user
+│   └── seed_negocio.py         # idempotent SQLite seed data
 ├── tests/                      # pytest suite
 ├── pyproject.toml
 ├── uv.lock
@@ -109,7 +113,10 @@ cp .env.example .env
 # 3. Create the first user
 uv run python -m scripts.crear_usuario
 
-# 4. Run the server
+# 4. Seed business data (SQLite file only)
+uv run python -m scripts.seed_negocio
+
+# 5. Run the server
 uv run uvicorn app.main:app --reload --host 127.0.0.1
 ```
 
@@ -127,14 +134,15 @@ uv run pytest -v
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | *(required)* | API key for the LLM provider. |
-| `OPENROUTER_API_BASE_URL` | `https://openrouter.ai/api/v1` | Provider base URL. |
-| `MODEL_AGENTE` | `openai/gpt-4o-mini` | Model ID. For OpenRouter use a full ID like `openai/gpt-4o-mini`. |
+| `OPENAI_API_KEY` | *(required)* | API key for the LLM provider. Also accepts `OPENROUTER_API_KEY`. |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Provider base URL. Also accepts `OPENROUTER_API_BASE_URL`. |
+| `MODEL_AGENTE` | `gpt-4o-mini` | Model ID. Use a full ID like `openai/gpt-4o-mini` for OpenRouter. |
 | `SECRET_KEY` | *(required)* | Secret for signed session cookies. |
 | `DATABASE_URL` | `sqlite:///./dev.db` | SQLAlchemy DB URL. |
 | `TIMEZONE` | `America/Monterrey` | Default timezone injected into the agent prompt. |
 | `SCHEDULER_INTERVAL_SECONDS` | `10` | How often the scheduler checks due reminders. |
 | `CHAT_RATE_LIMIT_PER_MINUTE` | `60` | Per-user chat rate limit. |
+| `MEMORIA_MENSAJES_MAX` | `20` | Messages kept in conversational memory. |
 
 ---
 
@@ -147,6 +155,9 @@ uv run pytest -v
 | `GET`  | `/api/me` | Current user info. |
 | `POST` | `/api/chat` | Send a text message to the agent. |
 | `GET`  | `/api/historial` | Get the current user's chat history. |
+| `GET`  | `/api/pendiente` | Get current pending write action, if any. |
+| `POST` | `/api/confirmar` | Confirm the pending write action. |
+| `POST` | `/api/cancelar` | Cancel the pending write action. |
 | `GET`  | `/api/eventos` | SSE stream for reminders. |
 
 ---
@@ -171,6 +182,27 @@ Audit log of every user command, tool called, arguments, and result.
 ### `mensajes`
 Per-user chat history used by the agent as conversational memory.
 
+### Business tables (`app/db/negocio.py`)
+
+| Table | Purpose |
+|---|---|
+| `clientes` | Customers. |
+| `empleados` | Employees; optionally linked to a Trackr `usuario`. |
+| `tipos_medidor`, `medidores`, `tamanos`, `tipos_utd` | Product catalogs. |
+| `productos` | **One stock table** for components and finished goods. `tipo` = `componente` or `terminado`. |
+| `recetas` | Bill of materials: components required for a finished product. |
+| `pedidos` | Orders with status, delivery type, carrier and tracking number. |
+| `pedido_items` | Order lines. |
+| `movimientos_inventario` | **Single ledger**; stock is derived from here, never from a snapshot. |
+
+Dropped from the original schema: `estados`, `componentes`, `equipos`, `equipos_terminados`, `equipos_en_stock`, `detalle_pedido`, `receta_equipo`, `equipo_componentes`, `evidencias`, `carpetas_evidencias`.
+
+### Read tools (via `/api/chat`)
+
+- `consultar_existencia(nombre)` — physical / reserved / available stock for a product.
+- `listar_stock_bajo()` — components under minimum and finished products with available stock under minimum.
+- `consultar_estado_pedido(texto)` — order status by order number or client name.
+
 ---
 
 ## Roadmap
@@ -184,7 +216,7 @@ Per-user chat history used by the agent as conversational memory.
 
 ### Phase 1.5 *(next)*
 - [x] Conversation memory per session
-- [ ] Confirmation step for inventory/order writes
+- [x] Confirmation step for inventory/order writes
 - [ ] Voice input with Whisper
 
 ### Phase 2
@@ -192,9 +224,10 @@ Per-user chat history used by the agent as conversational memory.
 - [ ] Limited DB user permissions
 
 ### Phase 3
-- [ ] Products, customers, employees
-- [ ] Inventory ledger (`movimientos_inventario`)
-- [ ] Orders, shipping, and transactional stock deduction
+- [x] Products, customers, employees (read-only tools + models)
+- [x] Inventory ledger (`movimientos_inventario`)
+- [x] Orders, shipping, and read-only status queries
+- [x] Write tools with transactional stock deduction
 - [ ] Automatic low-stock alerts
 
 ### Phase 4

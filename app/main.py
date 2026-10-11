@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.db.base import Base, engine
+import app.db.negocio  # noqa: F401  registra modelos de negocio en Base.metadata
 from app.api import auth, chat, eventos
 from app.servicios.scheduler import start_scheduler, stop_scheduler
 

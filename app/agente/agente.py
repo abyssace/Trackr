@@ -18,6 +18,9 @@ def _system_prompt() -> str:
         "NUNCA escribas SQL ni modifiques la base de datos directamente. "
         "Cuando el usuario pida crear un recordatorio, usa la herramienta crear_recordatorio. "
         "Cuando quiera ver sus recordatorios, usa listar_recordatorios. "
+        "Puedes consultar existencias de productos, listar productos bajo stock mínimo "
+        "y consultar el estado de pedidos. "
+        "No ejecutes escrituras de inventario, pedidos o clientes sin confirmación. "
         "Las fechas debes enviarlas en ISO 8601 con zona horaria explícita "
         "(por ejemplo 2026-10-08T17:00:00-06:00). "
         "Siempre repite la fecha interpretada en tu respuesta final de forma clara "
@@ -25,7 +28,7 @@ def _system_prompt() -> str:
         f"La zona horaria del negocio es {settings.TIMEZONE}. "
         f"Fecha/hora actual: {ahora.isoformat()}. "
         "Si no entiendes una fecha, pide aclaración. "
-        "Hoy solo manejas recordatorios."
+        "Para buscar productos o pedidos, usa el texto libre del usuario; nunca inventes ids ni SKU."
     )
 
 

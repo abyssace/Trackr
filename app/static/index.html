@@ -90,6 +90,13 @@
       <input type="text" id="messageInput" placeholder="Escribe un mensaje..." autocomplete="off" required />
       <button type="submit">Enviar</button>
     </form>
+    <div id="pendingActions" class="box hidden" style="margin-top: 0.75rem;">
+      <p id="pendingSummary" style="margin: 0 0 0.5rem 0; white-space: pre-line;"></p>
+      <div class="row">
+        <button id="confirmBtn" style="background:#2e7d32;color:#fff;">Confirmar</button>
+        <button id="cancelBtn" style="background:#c62828;color:#fff;">Cancelar</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -101,6 +108,10 @@
     const messageInput = document.getElementById('messageInput');
     const loginError = document.getElementById('loginError');
     const logoutBtn = document.getElementById('logoutBtn');
+    const pendingActions = document.getElementById('pendingActions');
+    const pendingSummary = document.getElementById('pendingSummary');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
 
     let eventSource = null;
 
@@ -210,13 +221,73 @@
       } finally {
         messageInput.disabled = false;
         messageInput.focus();
+        await checkPending();
       }
+    });
+
+    async function checkPending() {
+      try {
+        const res = await fetch('/api/pendiente', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.pendiente) {
+          pendingSummary.textContent = data.resumen + '\n\n(Expira en 5 minutos)';
+          pendingActions.classList.remove('hidden');
+          chatForm.classList.add('hidden');
+        } else {
+          hidePending();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function hidePending() {
+      pendingActions.classList.add('hidden');
+      chatForm.classList.remove('hidden');
+      pendingSummary.textContent = '';
+    }
+
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      try {
+        const res = await fetch('/api/confirmar', { method: 'POST', credentials: 'same-origin' });
+        if (!res.ok) {
+          const err = await res.json();
+          addMessage(`Error: ${err.detail || res.statusText}`, 'system');
+        } else {
+          const data = await res.json();
+          addMessage(data.resultado, 'assistant');
+        }
+      } catch (err) {
+        addMessage(`Error de red: ${err.message}`, 'system');
+      } finally {
+        confirmBtn.disabled = false;
+        hidePending();
+      }
+    });
+
+    cancelBtn.addEventListener('click', async () => {
+      try {
+        await fetch('/api/cancelar', { method: 'POST', credentials: 'same-origin' });
+        addMessage('Acción cancelada.', 'assistant');
+      } catch (err) {
+        addMessage(`Error de red: ${err.message}`, 'system');
+      }
+      hidePending();
     });
 
     logoutBtn.addEventListener('click', async () => {
       await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
       showLogin();
     });
+
+    // Revisar acción pendiente después de cada respuesta del chat y al cargar.
+    const originalShowChat = showChat;
+    showChat = async function() {
+      await originalShowChat();
+      await checkPending();
+    };
 
     checkSession();
   </script>

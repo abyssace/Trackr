@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -18,6 +18,7 @@ class Usuario(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True)
     password_hash: Mapped[str] = mapped_column(String(200))
     activo: Mapped[bool] = mapped_column(default=True)
+    es_admin: Mapped[bool] = mapped_column(default=False)
 
 
 class Recordatorio(Base):
@@ -51,4 +52,20 @@ class Mensaje(Base):
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), index=True)
     rol: Mapped[str] = mapped_column(String(20))
     contenido: Mapped[str] = mapped_column(String(4000))
+    creado_en: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class AccionPendiente(Base):
+    __tablename__ = "acciones_pendientes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
+    tool: Mapped[str] = mapped_column(String(100))
+    args: Mapped[str] = mapped_column(Text)
+    resumen: Mapped[str] = mapped_column(Text)
+    estado: Mapped[str] = mapped_column(String(20), default="pendiente")
+    expira_en: Mapped[datetime]
+    confirmado_por_usuario_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True
+    )
     creado_en: Mapped[datetime] = mapped_column(default=utc_now)

@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.servicios.roles import Rol
 
 
 def utc_now() -> datetime:
@@ -19,6 +20,7 @@ class Usuario(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     activo: Mapped[bool] = mapped_column(default=True)
     es_admin: Mapped[bool] = mapped_column(default=False)
+    rol: Mapped[str] = mapped_column(String(30), default=Rol.SOLO_LECTURA.value)
 
 
 class Recordatorio(Base):

@@ -1,57 +1,55 @@
 import argparse
-import getpass
-import logging
+import sys
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-from sqlalchemy import select
-from passlib.context import CryptContext
-
-from app.db.base import engine, SessionLocal, Base
+from app.config import settings
+from app.db.base import Base
 from app.db.modelos import Usuario
-
-logging.getLogger("passlib.handlers.bcrypt").setLevel(logging.ERROR)
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.servicios.auth import get_password_hash
+from app.servicios.roles import Rol
 
 
-def crear(nombre: str, username: str, password: str):
-    Base.metadata.create_all(bind=engine)
-
-    with SessionLocal() as db:
-        if db.scalar(select(Usuario).where(Usuario.username == username)):
-            print("Ese username ya existe.")
-            return
-
-        user = Usuario(
-            nombre=nombre,
-            username=username,
-            password_hash=pwd_context.hash(password),
-        )
-        db.add(user)
-        db.commit()
-        print(f"Usuario '{username}' creado con id {user.id}.")
+def _roles_texto() -> str:
+    return ", ".join(r.value for r in Rol)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Crea el primer usuario de Trackr.")
-    parser.add_argument("--nombre", help="Nombre completo")
-    parser.add_argument("--username", help="Nombre de usuario")
-    parser.add_argument("--password", help="Contraseña (mejor no usar en producción)")
+    parser = argparse.ArgumentParser(
+        description="Crea un usuario de Trackr con un rol específico."
+    )
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--password", required=True)
+    parser.add_argument("--nombre", required=True)
+    parser.add_argument(
+        "--rol",
+        required=True,
+        choices=[r.value for r in Rol],
+        metavar="ROL",
+        help=f"Rol del usuario. Valores válidos: {_roles_texto()}",
+    )
     args = parser.parse_args()
 
-    nombre = args.nombre or input("Nombre: ").strip()
-    username = args.username or input("Username: ").strip()
-    if args.password:
-        password = args.password
-        confirm = args.password
-    else:
-        password = getpass.getpass("Contraseña: ")
-        confirm = getpass.getpass("Repite contraseña: ")
+    engine = create_engine(settings.DATABASE_URL)
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
 
-    if password != confirm:
-        print("Las contraseñas no coinciden.")
-        return
+    if db.query(Usuario).filter(Usuario.username == args.username).first():
+        print("Usuario ya existe")
+        sys.exit(1)
 
-    crear(nombre, username, password)
+    usuario = Usuario(
+        nombre=args.nombre,
+        username=args.username,
+        password_hash=get_password_hash(args.password),
+        activo=True,
+        rol=args.rol,
+        es_admin=args.rol == Rol.ADMINISTRADOR.value,
+    )
+    db.add(usuario)
+    db.commit()
+    print(f"Usuario {args.username} creado con rol {args.rol}")
 
 
 if __name__ == "__main__":

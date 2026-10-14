@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.servicios.roles import Rol
@@ -21,6 +21,8 @@ class Usuario(Base):
     activo: Mapped[bool] = mapped_column(default=True)
     es_admin: Mapped[bool] = mapped_column(default=False)
     rol: Mapped[str] = mapped_column(String(30), default=Rol.SOLO_LECTURA.value)
+    intentos_fallidos: Mapped[int] = mapped_column(default=0)
+    bloqueado_hasta: Mapped[Optional[datetime]] = mapped_column(default=None)
 
 
 class Recordatorio(Base):
@@ -70,4 +72,15 @@ class AccionPendiente(Base):
     confirmado_por_usuario_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("usuarios.id"), nullable=True
     )
+    creado_en: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class Auditoria(Base):
+    __tablename__ = "auditoria"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    ip: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    exito: Mapped[bool]
+    razon: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     creado_en: Mapped[datetime] = mapped_column(default=utc_now)

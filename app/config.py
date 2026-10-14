@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     CHAT_RATE_LIMIT_PER_MINUTE: int = 60
     MAX_AUDIO_SEGUNDOS: int = 60
     MEMORIA_MENSAJES_MAX: int = 20
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_MINUTES: int = 15
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 

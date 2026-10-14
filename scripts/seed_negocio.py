@@ -4,6 +4,8 @@ import sys
 from app.config import settings
 from app.db.base import SessionLocal, engine, Base
 from app.db.modelos import Usuario
+from app.servicios.auth import get_password_hash
+from app.servicios.roles import Rol
 from app.db.negocio import (
     Cliente,
     Empleado,
@@ -44,18 +46,17 @@ def _crear_usuario_admin(db):
     admin = db.query(Usuario).filter(Usuario.username == "admin").first()
     if admin:
         admin.es_admin = True
+        admin.rol = Rol.ADMINISTRADOR.value
         db.commit()
         return
 
-    from passlib.context import CryptContext
-
-    pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     admin = Usuario(
         nombre="Administrador",
         username="admin",
-        password_hash=pwd.hash("admin"),
+        password_hash=get_password_hash("admin"),
         activo=True,
         es_admin=True,
+        rol=Rol.ADMINISTRADOR.value,
     )
     db.add(admin)
     db.commit()

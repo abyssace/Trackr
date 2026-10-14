@@ -3,9 +3,11 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import update
 
 from app.config import settings
+from app.servicios.backup import ejecutar_backup_diario
 from app.db.base import SessionLocal
 from app.db.modelos import Recordatorio
 from app.servicios import event_queue
@@ -52,6 +54,10 @@ def _fire_due_reminders(main_loop):
             pass
 
 
+def _run_backup():
+    ejecutar_backup_diario()
+
+
 def start_scheduler(main_loop):
     global _scheduler
     _scheduler = BackgroundScheduler()
@@ -59,6 +65,12 @@ def start_scheduler(main_loop):
         lambda: _fire_due_reminders(main_loop),
         IntervalTrigger(seconds=settings.SCHEDULER_INTERVAL_SECONDS),
         id="recordatorios",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _run_backup,
+        CronTrigger(hour=settings.BACKUP_HOUR_UTC, minute=0),
+        id="backup_diario",
         replace_existing=True,
     )
     _scheduler.start()

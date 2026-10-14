@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     MEMORIA_MENSAJES_MAX: int = 20
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_MINUTES: int = 15
+    BACKUP_DIR: str = "./backups"
+    BACKUP_RETENTION_DAYS: int = 7
+    BACKUP_HOUR_UTC: int = 6
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 

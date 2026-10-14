@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.db.base import Base, engine
 import app.db.negocio  # noqa: F401  registra modelos de negocio en Base.metadata
-from app.api import auth, chat, eventos
+from app.api import auth, chat, eventos, admin
 from app.servicios.scheduler import start_scheduler, stop_scheduler
 
 MAIN_LOOP: asyncio.AbstractEventLoop | None = None
@@ -38,5 +38,6 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(eventos.router)
+app.include_router(admin.router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

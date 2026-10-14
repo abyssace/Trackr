@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 
 from app.config import settings
@@ -20,6 +20,10 @@ elif settings.DATABASE_URL.startswith("sqlite"):
         connect_args={"check_same_thread": False},
         echo=False,
     )
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, connection_record):
+        dbapi_conn.execute("PRAGMA journal_mode=WAL")
 else:
     engine = create_engine(settings.DATABASE_URL, echo=False)
 

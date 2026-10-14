@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.modelos import AccionPendiente, Usuario
+from app.servicios.roles import puede_usar_tool
 
 
 TTL_MINUTOS = 5
@@ -72,7 +73,8 @@ def obtener_pendiente(db: Session, usuario_id: int) -> AccionPendiente | None:
 
 
 def puede_confirmar(pendiente: AccionPendiente, usuario: Usuario) -> bool:
-    return pendiente.usuario_id == usuario.id or usuario.es_admin
+    """Cada usuario solo confirma sus propias acciones, incluidos los administradores."""
+    return pendiente.usuario_id == usuario.id
 
 
 def cancelar_pendiente(db: Session, pendiente: AccionPendiente) -> None:
@@ -91,6 +93,11 @@ async def confirmar_pendiente(
     ejecutor = _ejecutores.get(pendiente.tool)
     if ejecutor is None:
         raise ValueError(f"No hay ejecutor registrado para '{pendiente.tool}'.")
+
+    if not puede_usar_tool(usuario.rol, pendiente.tool):
+        raise PermissionError(
+            f"El rol '{usuario.rol}' no puede ejecutar '{pendiente.tool}'."
+        )
 
     args = json.loads(pendiente.args)
     resultado = await ejecutor(db, args)

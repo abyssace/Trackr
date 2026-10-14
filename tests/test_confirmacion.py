@@ -13,6 +13,7 @@ from app.servicios.confirmacion import (
 from app.agente.tools.ejecutores import (
     ejecutar_registrar_entrada_mercancia,
 )
+from app.servicios.roles import Rol
 
 
 @pytest.fixture
@@ -26,6 +27,7 @@ def otro_usuario_no_admin(db):
         password_hash=pwd.hash("secret"),
         activo=True,
         es_admin=False,
+        rol=Rol.SOLO_LECTURA.value,
     )
     db.add(u)
     db.commit()
@@ -44,6 +46,7 @@ def admin_usuario(db):
         password_hash=pwd.hash("secret"),
         activo=True,
         es_admin=True,
+        rol=Rol.ADMINISTRADOR.value,
     )
     db.add(u)
     db.commit()
@@ -89,15 +92,23 @@ async def test_usuario_puede_confirmar_propio(db, usuario):
 
 
 @pytest.mark.anyio
-async def test_admin_puede_confirmar_de_otro(db, usuario, admin_usuario):
+async def test_admin_no_puede_confirmar_de_otro(db, usuario, admin_usuario):
     pendiente = crear_pendiente(db, usuario.id, "test", {}, "x")
-    assert puede_confirmar(pendiente, admin_usuario) is True
+    assert puede_confirmar(pendiente, admin_usuario) is False
 
 
 @pytest.mark.anyio
 async def test_no_admin_no_puede_confirmar_de_otro(db, usuario, otro_usuario_no_admin):
     pendiente = crear_pendiente(db, usuario.id, "test", {}, "x")
     assert puede_confirmar(pendiente, otro_usuario_no_admin) is False
+
+
+@pytest.mark.anyio
+async def test_confirmar_rechaza_si_rol_no_tiene_permiso(db, usuario):
+    pendiente = crear_pendiente(db, usuario.id, "registrar_entrada_mercancia", {}, "x")
+    usuario.rol = Rol.SOLO_LECTURA.value
+    with pytest.raises(PermissionError):
+        await confirmar_pendiente(db, pendiente, usuario)
 
 
 def test_pendiente_expirada_no_se_devuelve(db, usuario):

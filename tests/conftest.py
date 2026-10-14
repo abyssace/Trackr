@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 
 from app.db.base import Base, engine, SessionLocal, get_db
 from app.db.modelos import Usuario
+from app.servicios.roles import Rol
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -39,6 +40,7 @@ def usuario(db):
         username="testuser",
         password_hash=pwd_context.hash("secret"),
         activo=True,
+        rol=Rol.ADMINISTRADOR.value,
     )
     db.add(user)
     db.commit()
@@ -53,6 +55,7 @@ def otro_usuario(db):
         username="otro",
         password_hash=pwd_context.hash("secret"),
         activo=True,
+        rol=Rol.ADMINISTRADOR.value,
     )
     db.add(user)
     db.commit()

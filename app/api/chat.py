@@ -15,6 +15,7 @@ from app.agente.tools.recordatorios import make_recordatorio_tools
 from app.agente.tools.negocio import make_negocio_tools
 from app.agente.tools.escritura import make_escritura_tools
 from app.servicios.memoria import guardar_mensaje, obtener_historial
+from app.servicios.roles import filtrar_tools
 from app.servicios.confirmacion import (
     obtener_pendiente,
     puede_confirmar,
@@ -69,6 +70,8 @@ async def chat(
         + make_negocio_tools(usuario, db)
         + make_escritura_tools(usuario, db)
     )
+    tools = filtrar_tools(usuario.rol, tools)
+
     historial = obtener_historial(db, usuario.id)
     # El mensaje actual ya está en la BD; lo removemos del historial para no duplicarlo.
     if historial and isinstance(historial[-1].content, str) and historial[-1].content == payload.mensaje:
@@ -117,6 +120,8 @@ async def _confirmar_desde_chat(db, pendiente, usuario, mensaje):
         resultado = await confirmar_pendiente(db, pendiente, usuario)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc))
     guardar_mensaje(db, usuario.id, "user", mensaje)
     guardar_mensaje(db, usuario.id, "assistant", resultado)
     db.commit()
@@ -181,6 +186,8 @@ async def confirmar(
         resultado = await confirmar_pendiente(db, accion, usuario)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc))
     db.commit()
     return {"ok": True, "resultado": resultado}
 

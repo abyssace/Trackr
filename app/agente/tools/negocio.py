@@ -1,13 +1,15 @@
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
+from sqlalchemy import func
 
-from app.db.negocio import Pedido
+from app.db.negocio import Pedido, Producto
 from app.servicios.inventario import (
     stock_fisico,
     stock_reservado,
     evaluar_alerta_stock,
     buscar_productos,
     buscar_pedidos,
+    unidad_con_cantidad,
 )
 from app.servicios.inventario import buscar_clientes as _buscar_clientes
 
@@ -41,16 +43,12 @@ def _consultar_existencia(db, nombre: str) -> str:
 
 
 def _listar_stock_bajo(db) -> str:
-    from app.db.negocio import Producto
-
     productos = db.query(Producto).filter(
         Producto.activo == True,
         Producto.stock_minimo.isnot(None),
     ).all()
 
-    componentes_bajos = []
-    terminados_bajos = []
-    terminados_disponible_bajo = []
+    lineas = []
 
     for p in productos:
         fisico = stock_fisico(db, p.id)
@@ -63,36 +61,42 @@ def _listar_stock_bajo(db) -> str:
         )
         if p.tipo == "componente":
             if alerta["bajo_minimo"]:
-                componentes_bajos.append(_resumen_producto(db, p))
+                lineas.append(
+                    f"{p.nombre}: {fisico} {unidad_con_cantidad(p.unidad_medida, fisico)}, "
+                    f"mínimo {p.stock_minimo}."
+                )
         elif p.tipo == "terminado":
-            if alerta["bajo_minimo"]:
-                terminados_bajos.append(_resumen_producto(db, p))
-            if alerta["disponible_bajo_minimo"]:
-                terminados_disponible_bajo.append(_resumen_producto(db, p))
+            if alerta["bajo_minimo"] or alerta["disponible_bajo_minimo"]:
+                detalles = [
+                    f"físico {fisico} {unidad_con_cantidad(p.unidad_medida, fisico)}"
+                ]
+                if alerta["bajo_minimo"]:
+                    detalles.append("físico en el mínimo o debajo")
+                if reservado:
+                    detalles.append(
+                        f"comprometido {reservado} {unidad_con_cantidad(p.unidad_medida, reservado)}"
+                    )
+                    detalles.append(
+                        f"disponible {alerta['stock_disponible']} "
+                        f"{unidad_con_cantidad(p.unidad_medida, alerta['stock_disponible'])}"
+                    )
+                detalles.append(f"mínimo {p.stock_minimo}")
+                if alerta["disponible_bajo_minimo"]:
+                    detalles.append("disponible en el mínimo o debajo")
+                lineas.append(f"{p.nombre}: " + ", ".join(detalles) + ".")
 
-    partes = []
-    if componentes_bajos:
-        partes.append("Componentes bajo mínimo:")
-        partes.extend(f"- {l}" for l in componentes_bajos)
-    else:
-        partes.append("No hay componentes bajo el mínimo.")
+    if not lineas:
+        return "No hay productos por debajo de su mínimo de stock."
+    return "Productos en mínimo o por debajo:\n" + "\n".join(f"- {linea}" for linea in lineas)
 
-    partes.append("")
 
-    if terminados_bajos:
-        partes.append("Productos terminados con stock físico bajo mínimo:")
-        partes.extend(f"- {l}" for l in terminados_bajos)
-    else:
-        partes.append("Productos terminados: no hay stock físico bajo el mínimo.")
-
-    partes.append("")
-    if terminados_disponible_bajo:
-        partes.append("Advertencia ámbar: productos terminados con disponible bajo mínimo:")
-        partes.extend(f"- {l}" for l in terminados_disponible_bajo)
-    else:
-        partes.append("No hay productos terminados con disponible bajo el mínimo.")
-
-    return "\n".join(partes)
+def _contar_productos_activos(db) -> int:
+    return int(
+        db.query(func.count(Producto.id))
+        .filter(Producto.activo == True)
+        .scalar()
+        or 0
+    )
 
 
 def _resumen_pedido(p: Pedido) -> str:
@@ -151,12 +155,23 @@ def make_negocio_tools(usuario, db):
 
     @tool
     def listar_stock_bajo() -> str:
-        """Lista componentes bajo su mínimo y productos terminados con disponible bajo mínimo."""
+        """Indica qué productos están en su mínimo o por debajo. Usa físico y reservas."""
         return _listar_stock_bajo(db)
+
+    @tool
+    def contar_productos_activos() -> str:
+        """Cuenta todos los productos activos. Úsala cuando pregunten cuántos productos hay."""
+        total = _contar_productos_activos(db)
+        return f"Hay {total} productos activos."
 
     @tool(args_schema=ConsultarEstadoPedidoInput)
     def consultar_estado_pedido(texto: str) -> str:
         """Consulta el estado de un pedido por número o cliente."""
         return _consultar_estado_pedido(db, texto)
 
-    return [consultar_existencia, listar_stock_bajo, consultar_estado_pedido]
+    return [
+        consultar_existencia,
+        listar_stock_bajo,
+        consultar_estado_pedido,
+        contar_productos_activos,
+    ]

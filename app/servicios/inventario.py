@@ -45,6 +45,21 @@ def normalizar_busqueda(texto: str | None) -> str:
     return "".join(ch for ch in base if unicodedata.category(ch) != "Mn").casefold().strip()
 
 
+def unidad_con_cantidad(unidad: str | None, cantidad: int) -> str:
+    singular = (unidad or "pieza").strip()
+    if cantidad == 1:
+        return singular
+    plurales = {
+        "pieza": "piezas",
+        "unidad": "unidades",
+        "caja": "cajas",
+        "metro": "metros",
+        "kilogramo": "kilogramos",
+        "litro": "litros",
+    }
+    return plurales.get(singular.casefold(), singular if singular.endswith("s") else f"{singular}s")
+
+
 def evaluar_alerta_stock(
     cantidad_fisica: int,
     stock_minimo: int | None,
@@ -105,15 +120,32 @@ def buscar_productos(db: Session, texto: str, *, incluir_inactivos: bool = False
 
     def coincide(producto: Producto) -> bool:
         categoria = producto.categoria.nombre if producto.categoria else ""
-        return any(
-            termino in normalizar_busqueda(campo)
-            for campo in (
-                producto.nombre,
-                producto.descripcion,
-                producto.alias,
-                producto.codigo,
-                categoria,
+        searchable = normalizar_busqueda(
+            " ".join(
+                campo or ""
+                for campo in (
+                    producto.nombre,
+                    producto.descripcion,
+                    producto.alias,
+                    producto.codigo,
+                    categoria,
+                )
             )
+        )
+        if termino in searchable:
+            return True
+
+        def variantes(token: str) -> set[str]:
+            resultado = {token}
+            if len(token) > 5 and token.endswith("es"):
+                resultado.add(token[:-2])
+            if len(token) > 4 and token.endswith("s"):
+                resultado.add(token[:-1])
+            return resultado
+
+        return all(
+            any(variante in searchable for variante in variantes(token))
+            for token in termino.split()
         )
 
     encontrados = [producto for producto in productos if coincide(producto)]

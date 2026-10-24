@@ -121,16 +121,15 @@ def test_consultar_existencia_sin_coincidencias(db, negocio):
 
 def test_listar_stock_bajo_componente(db, negocio):
     resp = _listar_stock_bajo(db)
-    assert "Componentes bajo mínimo" in resp
-    assert "Cajas medianas" in resp
+    assert "Productos en mínimo o por debajo" in resp
+    assert "Cajas medianas: 8 piezas, mínimo 10." in resp
 
 
 def test_listar_stock_bajo_terminado(db, negocio):
     # físico 12 - reservado 10 = 2, mínimo 5 => debe aparecer
     resp = _listar_stock_bajo(db)
-    assert "Productos terminados" in resp
     assert "Medidor A-100" in resp
-    assert "Advertencia ámbar" in resp
+    assert "disponible 2 piezas, mínimo 5" in resp
 
 
 def test_consultar_estado_pedido_por_numero(db, negocio):

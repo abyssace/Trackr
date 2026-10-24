@@ -16,6 +16,7 @@ _HERRAMIENTAS_LECTURA = {
     "consultar_existencia",
     "listar_stock_bajo",
     "consultar_estado_pedido",
+    "contar_productos_activos",
 }
 
 _HERRAMIENTAS_ESCRITURA = {
@@ -26,6 +27,7 @@ _HERRAMIENTAS_ESCRITURA = {
     "registrar_terminado",
     "registrar_envio",
     "marcar_entregado",
+    "actualizar_stock_minimo",
 }
 
 TODAS_LAS_HERRAMIENTAS = _HERRAMIENTAS_LECTURA | _HERRAMIENTAS_ESCRITURA
@@ -35,7 +37,12 @@ PERMISOS_POR_ROL: dict[str, set[str]] = {
     Rol.VENDEDOR.value: set(_HERRAMIENTAS_LECTURA)
     | {"crear_pedido", "editar_pedido", "cancelar_pedido", "marcar_entregado"},
     Rol.ALMACEN.value: set(_HERRAMIENTAS_LECTURA)
-    | {"registrar_entrada_mercancia", "registrar_envio", "marcar_entregado"},
+    | {
+        "registrar_entrada_mercancia",
+        "registrar_envio",
+        "marcar_entregado",
+        "actualizar_stock_minimo",
+    },
     Rol.ENSAMBLADOR.value: set(_HERRAMIENTAS_LECTURA) | {"registrar_terminado"},
     Rol.ADMINISTRADOR.value: set(TODAS_LAS_HERRAMIENTAS),
 }

@@ -7,7 +7,7 @@ from app.db.negocio import (
     Receta,
 )
 from app.servicios.confirmacion import registrar_ejecutor
-from app.servicios.inventario import stock_disponible
+from app.servicios.inventario import stock_disponible, unidad_con_cantidad
 from app.servicios.movimientos import registrar_movimiento
 
 
@@ -248,3 +248,14 @@ async def ejecutar_marcar_entregado(db: Session, args: dict) -> str:
         lineas.append("Advertencias:")
         lineas.extend(f"- {a}" for a in advertencias)
     return "\n".join(lineas)
+
+
+@registrar_ejecutor("actualizar_stock_minimo")
+async def ejecutar_actualizar_stock_minimo(db: Session, args: dict) -> str:
+    producto = db.get(Producto, args["producto_id"])
+    if producto is None or not producto.activo:
+        raise ValueError("El producto no existe o está inactivo.")
+    nuevo_minimo = args["stock_minimo"]
+    producto.stock_minimo = nuevo_minimo
+    unidad = unidad_con_cantidad(producto.unidad_medida, nuevo_minimo)
+    return f"Listo. El mínimo de {producto.nombre} ahora es {nuevo_minimo} {unidad}."

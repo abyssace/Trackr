@@ -12,7 +12,9 @@ from app.servicios.inventario import (
     buscar_pedidos,
     buscar_productos,
     stock_disponible,
+    unidad_con_cantidad,
 )
+from app.servicios.roles import puede_usar_tool
 
 # Importar para registrar los ejecutores en el dispatcher.
 import app.agente.tools.ejecutores  # noqa: F401
@@ -169,6 +171,11 @@ class RegistrarEnvioInput(BaseModel):
 
 class MarcarEntregadoInput(BaseModel):
     pedido: str = Field(description="Número de pedido o cliente")
+
+
+class ActualizarStockMinimoInput(BaseModel):
+    producto: str = Field(description="Nombre o código del producto")
+    stock_minimo: int = Field(description="Nuevo mínimo de alerta; entero igual o mayor que cero", ge=0)
 
 
 def make_escritura_tools(usuario: Usuario, db: Session):
@@ -363,6 +370,28 @@ def make_escritura_tools(usuario: Usuario, db: Session):
         crear_pendiente(db, usuario.id, "marcar_entregado", args, resumen)
         return resumen
 
+    @tool(args_schema=ActualizarStockMinimoInput)
+    def actualizar_stock_minimo(producto: str, stock_minimo: int) -> str:
+        """Cambia el mínimo de alerta de un producto. Solo administración/almacén; requiere confirmación."""
+        if not puede_usar_tool(usuario.rol, "actualizar_stock_minimo"):
+            return "Tu perfil no tiene permiso para cambiar mínimos de stock."
+        producto_obj, error = _resolver_producto(db, producto)
+        if error:
+            return error
+        if producto_obj.stock_minimo == stock_minimo:
+            return f"{producto_obj.nombre} ya tiene un mínimo de {stock_minimo}."
+
+        anterior = producto_obj.stock_minimo
+        args = {"producto_id": producto_obj.id, "stock_minimo": stock_minimo}
+        unidad = unidad_con_cantidad(producto_obj.unidad_medida, stock_minimo)
+        resumen = (
+            f"Voy a cambiar el mínimo de {producto_obj.nombre} de "
+            f"{anterior if anterior is not None else 'sin configurar'} a "
+            f"{stock_minimo} {unidad}. ¿Confirmas?"
+        )
+        crear_pendiente(db, usuario.id, "actualizar_stock_minimo", args, resumen)
+        return resumen
+
     return [
         crear_pedido,
         editar_pedido,
@@ -371,4 +400,5 @@ def make_escritura_tools(usuario: Usuario, db: Session):
         registrar_terminado,
         registrar_envio,
         marcar_entregado,
+        actualizar_stock_minimo,
     ]

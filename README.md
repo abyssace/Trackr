@@ -205,8 +205,13 @@ Dropped from the original schema: `estados`, `componentes`, `equipos`, `equipos_
 ### Read tools (via `/api/chat`)
 
 - `consultar_existencia(nombre)` — physical / reserved / available stock for a product.
-- `listar_stock_bajo()` — components under minimum and finished products with available stock under minimum.
+- `listar_stock_bajo()` — physical minimum alerts and finished-product availability warnings.
 - `consultar_estado_pedido(texto)` — order status by order number or client name.
+- `contar_productos_activos()` — exact count of active catalog products.
+
+### Write tools (via `/api/chat`)
+
+- `actualizar_stock_minimo(producto, stock_minimo)` — available to administrators and warehouse staff; requires confirmation by the same user who requested it.
 
 ---
 

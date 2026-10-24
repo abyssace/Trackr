@@ -182,6 +182,28 @@ def test_busqueda_por_codigo_de_barras(client, db):
     assert [p["codigo"] for p in response.json()["productos"]] == ["MX-ABC-123"]
 
 
+def test_busqueda_resuelve_nombre_en_plural(client, db):
+    _crear_usuario(db, Rol.SOLO_LECTURA.value)
+    db.add(
+        Producto(
+            nombre="Destornillador allen",
+            tipo="componente",
+            activo=True,
+        )
+    )
+    db.commit()
+    _login(client, "user_solo_lectura")
+
+    response = client.get(
+        "/api/inventario/productos",
+        params={"q": "destornilladores allen"},
+    )
+    assert response.status_code == 200
+    assert [item["nombre"] for item in response.json()["productos"]] == [
+        "Destornillador allen"
+    ]
+
+
 @pytest.mark.parametrize(
     "rol,compra,venta",
     [

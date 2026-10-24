@@ -54,6 +54,7 @@ def test_solo_lectura_solo_puede_lectura():
         "consultar_existencia",
         "listar_stock_bajo",
         "consultar_estado_pedido",
+        "contar_productos_activos",
     }
 
 

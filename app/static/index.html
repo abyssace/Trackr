@@ -9,9 +9,9 @@
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 720px;
-      margin: 2rem auto;
-      padding: 0 1rem;
+      max-width: 1100px;
+      margin: 1rem auto;
+      padding: 0 0.75rem 2rem;
       color: #222;
     }
     h1 { margin-bottom: 0.25rem; }
@@ -28,7 +28,8 @@
       min-width: 180px;
     }
     button {
-      padding: 0.5rem 1rem;
+      min-height: 44px;
+      padding: 0.65rem 1rem;
       cursor: pointer;
     }
     #messages {
@@ -66,6 +67,28 @@
       padding: 0.5rem;
     }
     .hidden { display: none; }
+    .app-nav { display: flex; gap: 0.5rem; margin: 1rem 0; }
+    .app-nav button[aria-current="page"] { background: #2563eb; color: white; border: 0; }
+    .inventory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem; }
+    .inventory-kpi { border: 1px solid #ddd; border-radius: 0.65rem; padding: 0.9rem; min-height: 75px; }
+    .inventory-kpi strong { display: block; font-size: 1.25rem; margin-top: 0.25rem; overflow-wrap: anywhere; }
+    .inventory-search { display: flex; gap: 0.5rem; margin: 1rem 0; }
+    .inventory-search input { flex: 1; min-width: 0; min-height: 48px; padding: 0.7rem; }
+    .product-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.75rem; }
+    .product-card { border: 1px solid #ddd; border-left: 6px solid #2e7d32; border-radius: 0.65rem; padding: 0.9rem; overflow-wrap: anywhere; }
+    .product-card.low-stock { border-left-color: #c62828; background: #fff7f7; }
+    .product-card .warning { color: #8a5a00; background: #fff4d6; padding: 0.5rem; border-radius: 0.4rem; }
+    .muted { color: #666; }
+    #categoryChart { width: 100%; height: auto; min-height: 80px; }
+    .status-message { padding: 0.8rem; border-radius: 0.5rem; background: #f4f6f8; }
+    @media (max-width: 560px) {
+      body { margin-top: 0.5rem; }
+      h1 { font-size: 1.6rem; }
+      .box { padding: 0.8rem; }
+      .inventory-search { flex-direction: column; }
+      .inventory-search button { width: 100%; }
+      #messages { height: 38vh; min-height: 220px; }
+    }
   </style>
 </head>
 <body>
@@ -81,6 +104,11 @@
     </form>
     <p id="loginError" style="color: #c00;"></p>
   </div>
+
+  <nav id="appNav" class="app-nav hidden" aria-label="Secciones de Trackr">
+    <button id="showChatBtn" type="button" aria-current="page">Chat</button>
+    <button id="showInventoryBtn" type="button">Inventario</button>
+  </nav>
 
   <div id="chatBox" class="box hidden">
     <div class="row" style="justify-content: space-between; align-items: center;">
@@ -101,6 +129,26 @@
     </div>
   </div>
 
+  <main id="inventoryBox" class="hidden">
+    <section class="box" aria-labelledby="inventoryTitle">
+      <h2 id="inventoryTitle">Inventario</h2>
+      <p class="muted">Consulta productos, existencias y alertas. El stock se calcula con los movimientos registrados.</p>
+      <div id="inventoryKpis" class="inventory-grid" aria-live="polite"></div>
+      <div class="box">
+        <h3>Existencias por categoría</h3>
+        <svg id="categoryChart" viewBox="0 0 640 100" role="img" aria-label="Gráfica de existencias por categoría"></svg>
+        <p id="chartEmpty" class="muted hidden">Todavía no hay productos para mostrar.</p>
+      </div>
+      <label for="productSearch"><strong>Buscar producto</strong></label>
+      <form id="productSearchForm" class="inventory-search" role="search">
+        <input id="productSearch" type="search" placeholder="Nombre, categoría o código de barras" autocomplete="off" />
+        <button type="submit">Buscar</button>
+      </form>
+      <p id="inventoryMessage" class="status-message" role="status">Cargando inventario…</p>
+      <div id="productList" class="product-list" aria-live="polite"></div>
+    </section>
+  </main>
+
   <script>
     const loginBox = document.getElementById('loginBox');
     const chatBox = document.getElementById('chatBox');
@@ -114,8 +162,18 @@
     const pendingSummary = document.getElementById('pendingSummary');
     const confirmBtn = document.getElementById('confirmBtn');
     const cancelBtn = document.getElementById('cancelBtn');
+    const appNav = document.getElementById('appNav');
+    const inventoryBox = document.getElementById('inventoryBox');
+    const inventoryKpis = document.getElementById('inventoryKpis');
+    const categoryChart = document.getElementById('categoryChart');
+    const chartEmpty = document.getElementById('chartEmpty');
+    const productSearch = document.getElementById('productSearch');
+    const productSearchForm = document.getElementById('productSearchForm');
+    const productList = document.getElementById('productList');
+    const inventoryMessage = document.getElementById('inventoryMessage');
 
     let eventSource = null;
+    let searchTimer = null;
 
     function addMessage(text, role) {
       const div = document.createElement('div');
@@ -150,10 +208,28 @@
 
     async function showChat() {
       loginBox.classList.add('hidden');
+      appNav.classList.remove('hidden');
       chatBox.classList.remove('hidden');
+      inventoryBox.classList.add('hidden');
+      document.getElementById('showChatBtn').setAttribute('aria-current', 'page');
+      document.getElementById('showInventoryBtn').removeAttribute('aria-current');
       await loadHistory();
       connectEvents();
     }
+
+    async function showInventory() {
+      loginBox.classList.add('hidden');
+      appNav.classList.remove('hidden');
+      chatBox.classList.add('hidden');
+      inventoryBox.classList.remove('hidden');
+      document.getElementById('showInventoryBtn').setAttribute('aria-current', 'page');
+      document.getElementById('showChatBtn').removeAttribute('aria-current');
+      await loadInventorySummary();
+      await loadProducts(productSearch.value);
+    }
+
+    document.getElementById('showChatBtn').addEventListener('click', showChat);
+    document.getElementById('showInventoryBtn').addEventListener('click', showInventory);
 
     function connectEvents() {
       if (eventSource) eventSource.close();
@@ -173,9 +249,159 @@
 
     function showLogin() {
       chatBox.classList.add('hidden');
+      inventoryBox.classList.add('hidden');
+      appNav.classList.add('hidden');
       loginBox.classList.remove('hidden');
       if (eventSource) eventSource.close();
     }
+
+    function monedaMx(valor) {
+      return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
+    }
+
+    function agregarKpi(etiqueta, valor) {
+      const card = document.createElement('div');
+      card.className = 'inventory-kpi';
+      const label = document.createElement('span');
+      label.className = 'muted';
+      label.textContent = etiqueta;
+      const value = document.createElement('strong');
+      value.textContent = valor;
+      card.append(label, value);
+      inventoryKpis.appendChild(card);
+    }
+
+    async function loadInventorySummary() {
+      inventoryKpis.replaceChildren();
+      try {
+        const response = await fetch('/api/inventario/resumen', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('No se pudo cargar el resumen.');
+        const data = await response.json();
+        agregarKpi('Productos activos', String(data.total_productos));
+        agregarKpi('Productos con alerta roja', String(data.productos_bajo_minimo));
+        if (Object.hasOwn(data, 'valor_inventario_costo_mxn')) {
+          agregarKpi('Valor a costo (MXN)', monedaMx(data.valor_inventario_costo_mxn));
+          agregarKpi('Productos sin precio de compra', String(data.productos_sin_precio_compra));
+        }
+        if (Object.hasOwn(data, 'valor_inventario_venta_mxn')) {
+          agregarKpi('Valor a precio de venta (MXN)', monedaMx(data.valor_inventario_venta_mxn));
+          agregarKpi('Productos sin precio de venta', String(data.productos_sin_precio_venta));
+        }
+        drawCategoryChart(data.stock_por_categoria || []);
+      } catch (error) {
+        agregarKpi('Resumen', 'No disponible');
+      }
+    }
+
+    function drawCategoryChart(rows) {
+      categoryChart.replaceChildren();
+      chartEmpty.classList.toggle('hidden', rows.length > 0);
+      if (!rows.length) {
+        categoryChart.setAttribute('viewBox', '0 0 640 80');
+        return;
+      }
+      const rowHeight = 34;
+      const max = Math.max(1, ...rows.map(row => row.cantidad));
+      categoryChart.setAttribute('viewBox', `0 0 640 ${rows.length * rowHeight + 8}`);
+      rows.forEach((row, index) => {
+        const y = index * rowHeight + 6;
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', '4'); label.setAttribute('y', String(y + 16));
+        label.setAttribute('font-size', '13'); label.textContent = row.categoria;
+        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bar.setAttribute('x', '210'); bar.setAttribute('y', String(y));
+        bar.setAttribute('width', String(Math.max(2, 360 * row.cantidad / max)));
+        bar.setAttribute('height', '22'); bar.setAttribute('rx', '4');
+        bar.setAttribute('fill', '#2563eb');
+        const count = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        count.setAttribute('x', String(220 + 360 * row.cantidad / max));
+        count.setAttribute('y', String(y + 16)); count.setAttribute('font-size', '13');
+        count.textContent = String(row.cantidad);
+        categoryChart.append(label, bar, count);
+      });
+    }
+
+    function renderProducts(products) {
+      productList.replaceChildren();
+      if (!products.length) {
+        inventoryMessage.textContent = 'No encontramos productos con esa búsqueda.';
+        inventoryMessage.classList.remove('hidden');
+        return;
+      }
+      inventoryMessage.classList.add('hidden');
+      products.forEach(product => {
+        const card = document.createElement('article');
+        card.className = `product-card${product.bajo_minimo ? ' low-stock' : ''}`;
+        const title = document.createElement('h3'); title.textContent = product.nombre;
+        const details = document.createElement('p');
+        details.className = 'muted';
+        details.textContent = [product.categoria || 'Sin categoría', product.codigo || 'Sin código', product.proveedor || 'Sin proveedor'].join(' · ');
+        const stock = document.createElement('p');
+        stock.textContent = `Existencia física: ${product.stock_actual}${product.unidad_medida ? ` ${product.unidad_medida}` : ''}`;
+        const minimum = document.createElement('p');
+        minimum.textContent = product.stock_minimo === null ? 'Alerta mínima: sin configurar' : `Mínimo: ${product.stock_minimo}`;
+        card.append(title, details, stock, minimum);
+        if (product.bajo_minimo) {
+          const red = document.createElement('p'); red.className = 'warning';
+          red.textContent = 'Alerta: existencia física en el mínimo o por debajo.'; card.appendChild(red);
+        }
+        if (product.tipo === 'terminado') {
+          const committed = document.createElement('p');
+          committed.textContent = `Comprometido en pedidos: ${product.stock_comprometido}`;
+          card.appendChild(committed);
+          if (product.disponible_bajo_minimo) {
+            const amber = document.createElement('p'); amber.className = 'warning';
+            amber.textContent = `Advertencia: quedan ${product.stock_disponible} disponibles después de pedidos comprometidos.`;
+            card.appendChild(amber);
+          }
+        }
+        if (Object.hasOwn(product, 'precio_compra')) {
+          const cost = document.createElement('p');
+          cost.textContent = product.precio_compra === null ? 'Precio de compra pendiente' : `Precio de compra: ${monedaMx(product.precio_compra)}`;
+          card.appendChild(cost);
+        }
+        if (Object.hasOwn(product, 'precio_venta')) {
+          const sale = document.createElement('p');
+          sale.textContent = product.precio_venta === null ? 'Precio de venta pendiente' : `Precio de venta: ${monedaMx(product.precio_venta)}`;
+          card.appendChild(sale);
+        }
+        productList.appendChild(card);
+      });
+    }
+
+    async function loadProducts(query = '') {
+      inventoryMessage.textContent = 'Buscando productos…';
+      inventoryMessage.classList.remove('hidden');
+      try {
+        const url = new URL('/api/inventario/productos', window.location.origin);
+        if (query.trim()) url.searchParams.set('q', query.trim());
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('No se pudo cargar el catálogo.');
+        const data = await response.json();
+        renderProducts(data.productos || []);
+      } catch (error) {
+        productList.replaceChildren();
+        inventoryMessage.textContent = error.message || 'Ocurrió un error al consultar el inventario.';
+        inventoryMessage.classList.remove('hidden');
+      }
+    }
+
+    productSearch.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadProducts(productSearch.value), 120);
+    });
+    productSearch.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        clearTimeout(searchTimer);
+        loadProducts(productSearch.value);
+      }
+    });
+    productSearchForm.addEventListener('submit', event => {
+      event.preventDefault();
+      clearTimeout(searchTimer);
+      loadProducts(productSearch.value);
+    });
 
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();

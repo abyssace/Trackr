@@ -1,8 +1,13 @@
 import argparse
 import sys
+from decimal import Decimal
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
-from app.db.base import SessionLocal, engine, Base
+from app.db.base import SessionLocal, engine
 from app.db.modelos import Usuario
 from app.servicios.auth import get_password_hash
 from app.servicios.roles import Rol
@@ -13,6 +18,8 @@ from app.db.negocio import (
     Medidor,
     Tamano,
     TipoUTD,
+    Categoria,
+    Proveedor,
     Producto,
     Receta,
     Pedido,
@@ -21,33 +28,135 @@ from app.db.negocio import (
 )
 
 
-def _es_sqlite_local() -> bool:
-    url = settings.DATABASE_URL
-    return url.startswith("sqlite:///") and ":memory:" not in url
+def _es_sqlite_local(url: str | None = None) -> bool:
+    try:
+        parsed = make_url(url or settings.DATABASE_URL)
+    except Exception:
+        return False
+    if not parsed.drivername.startswith("sqlite") or not parsed.database:
+        return False
+    database = parsed.database.lower()
+    memory_mode = any(
+        key.lower() == "mode" and str(value).lower() == "memory"
+        for key, value in (parsed.query or {}).items()
+    )
+    return database != ":memory:" and not database.startswith("file::memory:") and not memory_mode
 
 
-def _limpiar_negocio(db):
-    # Orden inverso a las dependencias FK.
-    db.query(MovimientoInventario).delete()
-    db.query(PedidoItem).delete()
-    db.query(Pedido).delete()
-    db.query(Receta).delete()
-    db.query(Producto).delete()
-    db.query(Medidor).delete()
-    db.query(TipoMedidor).delete()
-    db.query(Tamano).delete()
-    db.query(TipoUTD).delete()
-    db.query(Empleado).delete()
-    db.query(Cliente).delete()
-    db.commit()
+def _obtener_o_crear(db, modelo, nombre: str, **valores):
+    registro = db.query(modelo).filter(modelo.nombre == nombre).first()
+    if registro:
+        return registro
+    registro = modelo(nombre=nombre, **valores)
+    db.add(registro)
+    db.flush()
+    return registro
+
+
+def _asegurar_catalogos_inventario(db):
+    categorias = {
+        "componentes": _obtener_o_crear(
+            db, Categoria, "Componentes", descripcion="Refacciones y piezas para ensamble"
+        ),
+        "empaque": _obtener_o_crear(
+            db, Categoria, "Empaque", descripcion="Materiales de empaque"
+        ),
+        "medidores": _obtener_o_crear(
+            db, Categoria, "Medidores", descripcion="Medidores terminados"
+        ),
+    }
+    proveedores = {
+        "regio": _obtener_o_crear(
+            db,
+            Proveedor,
+            "Suministros Regiomontanos S.A. de C.V.",
+            contacto="Mariana Salas",
+            telefono="8180001200",
+            correo="ventas@ejemplo.mx",
+        ),
+        "norte": _obtener_o_crear(
+            db,
+            Proveedor,
+            "Componentes del Norte S. de R.L. de C.V.",
+            contacto="Jorge Luna",
+            telefono="8180003400",
+            correo="pedidos@ejemplo.mx",
+        ),
+    }
+    return categorias, proveedores
+
+
+def _tiene_datos_negocio(db) -> bool:
+    return any(
+        db.query(modelo).first() is not None
+        for modelo in (Cliente, Empleado, Producto, Pedido, MovimientoInventario)
+    )
+
+
+def _sembrar_productos_demo_aditivos(db, categorias, proveedores):
+    """Añade ejemplos con códigos estables; nunca borra ni sobrescribe productos."""
+    demo = [
+        {
+            "nombre": "Medidor residencial 1 pulgada (demo)",
+            "codigo": "DEMO-MED-001",
+            "tipo": "terminado",
+            "unidad_medida": "pieza",
+            "stock_minimo": 5,
+            "categoria_id": categorias["medidores"].id,
+            "proveedor_id": proveedores["regio"].id,
+            "precio_compra": Decimal("420.00"),
+            "precio_venta": Decimal("690.00"),
+            "cantidad": 8,
+        },
+        {
+            "nombre": "Válvula de latón 1/2 pulgada (demo)",
+            "codigo": "DEMO-CMP-001",
+            "tipo": "componente",
+            "unidad_medida": "pieza",
+            "stock_minimo": 8,
+            "categoria_id": categorias["componentes"].id,
+            "proveedor_id": proveedores["norte"].id,
+            "precio_compra": Decimal("85.50"),
+            "precio_venta": Decimal("139.90"),
+            "cantidad": 12,
+        },
+        {
+            "nombre": "Empaque O-ring NBR (demo)",
+            "codigo": "DEMO-EMP-001",
+            "tipo": "componente",
+            "unidad_medida": "pieza",
+            "stock_minimo": 10,
+            "categoria_id": categorias["empaque"].id,
+            "proveedor_id": proveedores["norte"].id,
+            "precio_compra": Decimal("5.75"),
+            "precio_venta": Decimal("12.50"),
+            "cantidad": 7,
+        },
+    ]
+    for valores in demo:
+        existente = db.query(Producto).filter(
+            (Producto.codigo == valores["codigo"])
+            | (Producto.nombre == valores["nombre"])
+        ).first()
+        if existente:
+            continue
+        cantidad = valores.pop("cantidad")
+        producto = Producto(**valores)
+        db.add(producto)
+        db.flush()
+        db.add(
+            MovimientoInventario(
+                producto_id=producto.id,
+                cantidad=cantidad,
+                tipo_movimiento="entrada",
+                referencia=f"Seed demo {producto.codigo}",
+            )
+        )
 
 
 def _crear_usuario_admin(db):
     admin = db.query(Usuario).filter(Usuario.username == "admin").first()
     if admin:
-        admin.es_admin = True
-        admin.rol = Rol.ADMINISTRADOR.value
-        db.commit()
         return
 
     admin = Usuario(
@@ -62,13 +171,13 @@ def _crear_usuario_admin(db):
     db.commit()
 
 
-def seed():
-    if not _es_sqlite_local():
+def seed(database_url: str | None = None):
+    target_url = database_url or settings.DATABASE_URL
+    if not _es_sqlite_local(target_url):
         print(
             "ERROR: Este script solo puede ejecutarse contra un archivo SQLite local.",
             file=sys.stderr,
         )
-        print(f"DATABASE_URL actual: {settings.DATABASE_URL}", file=sys.stderr)
         sys.exit(1)
 
     # Suprimir warning inofensivo de passlib con bcrypt >=4.1
@@ -76,12 +185,23 @@ def seed():
 
     logging.getLogger("passlib.handlers.bcrypt").setLevel(logging.ERROR)
 
-    Base.metadata.create_all(bind=engine)
-
-    db = SessionLocal()
+    owns_engine = database_url is not None
+    target_engine = create_engine(
+        target_url,
+        connect_args={"check_same_thread": False},
+    ) if owns_engine else engine
+    target_sessions = sessionmaker(autocommit=False, autoflush=False, bind=target_engine) if owns_engine else SessionLocal
+    db = target_sessions()
     try:
-        _limpiar_negocio(db)
         _crear_usuario_admin(db)
+        categorias, proveedores = _asegurar_catalogos_inventario(db)
+        if _tiene_datos_negocio(db):
+            _sembrar_productos_demo_aditivos(db, categorias, proveedores)
+            db.commit()
+            print("[OK] Seed aditivo de inventario completado.")
+            print(f"   Productos: {db.query(Producto).count()}")
+            print(f"   Movimientos: {db.query(MovimientoInventario).count()}")
+            return
 
         # Catálogos
         tipos_medidor = {
@@ -255,6 +375,24 @@ def seed():
         }
 
         productos = {**componentes, **terminados}
+        inventario_seed = {
+            "sellos": ("DEMO-CMP-002", "componentes", "norte", "18.00", "29.00"),
+            "cajas": ("DEMO-EMP-002", "empaque", "regio", "12.50", "22.00"),
+            "bolsas": ("DEMO-EMP-003", "empaque", "regio", "1.20", "2.50"),
+            "tornillos": ("DEMO-CMP-003", "componentes", "norte", "0.85", "1.80"),
+            "carcasa": ("DEMO-CMP-004", "componentes", "norte", "75.00", "125.00"),
+            "sensor": ("DEMO-CMP-005", "componentes", "norte", "110.00", "185.00"),
+            "med_dom_1_clas": ("DEMO-MED-002", "medidores", "regio", "420.00", "690.00"),
+            "med_dom_2_clas": ("DEMO-MED-003", "medidores", "regio", "590.00", "920.00"),
+            "med_ind_3_int": ("DEMO-MED-004", "medidores", "regio", "1450.00", "2250.00"),
+        }
+        for clave, producto in productos.items():
+            codigo, categoria, proveedor, precio_compra, precio_venta = inventario_seed[clave]
+            producto.codigo = codigo
+            producto.categoria_id = categorias[categoria].id
+            producto.proveedor_id = proveedores[proveedor].id
+            producto.precio_compra = Decimal(precio_compra)
+            producto.precio_venta = Decimal(precio_venta)
         db.add_all(productos.values())
         db.flush()
 
@@ -419,6 +557,8 @@ def seed():
         ]
         db.add_all(items)
 
+        _sembrar_productos_demo_aditivos(db, categorias, proveedores)
+
         db.commit()
         print("[OK] Seed de negocio completado.")
         print(f"   Clientes: {db.query(Cliente).count()}")
@@ -427,6 +567,8 @@ def seed():
         print(f"   Movimientos: {db.query(MovimientoInventario).count()}")
     finally:
         db.close()
+        if owns_engine:
+            target_engine.dispose()
 
 
 def main():

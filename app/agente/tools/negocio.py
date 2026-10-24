@@ -5,6 +5,7 @@ from app.db.negocio import Pedido
 from app.servicios.inventario import (
     stock_fisico,
     stock_reservado,
+    evaluar_alerta_stock,
     buscar_productos,
     buscar_pedidos,
 )
@@ -49,16 +50,25 @@ def _listar_stock_bajo(db) -> str:
 
     componentes_bajos = []
     terminados_bajos = []
+    terminados_disponible_bajo = []
 
     for p in productos:
         fisico = stock_fisico(db, p.id)
+        reservado = stock_reservado(db, p.id) if p.tipo == "terminado" else 0
+        alerta = evaluar_alerta_stock(
+            fisico,
+            p.stock_minimo,
+            comprometido=reservado,
+            es_terminado=p.tipo == "terminado",
+        )
         if p.tipo == "componente":
-            if fisico <= p.stock_minimo:
+            if alerta["bajo_minimo"]:
                 componentes_bajos.append(_resumen_producto(db, p))
         elif p.tipo == "terminado":
-            disponible = fisico - stock_reservado(db, p.id)
-            if disponible <= p.stock_minimo:
+            if alerta["bajo_minimo"]:
                 terminados_bajos.append(_resumen_producto(db, p))
+            if alerta["disponible_bajo_minimo"]:
+                terminados_disponible_bajo.append(_resumen_producto(db, p))
 
     partes = []
     if componentes_bajos:
@@ -70,8 +80,15 @@ def _listar_stock_bajo(db) -> str:
     partes.append("")
 
     if terminados_bajos:
-        partes.append("Productos terminados con disponible bajo mínimo:")
+        partes.append("Productos terminados con stock físico bajo mínimo:")
         partes.extend(f"- {l}" for l in terminados_bajos)
+    else:
+        partes.append("Productos terminados: no hay stock físico bajo el mínimo.")
+
+    partes.append("")
+    if terminados_disponible_bajo:
+        partes.append("Advertencia ámbar: productos terminados con disponible bajo mínimo:")
+        partes.extend(f"- {l}" for l in terminados_disponible_bajo)
     else:
         partes.append("No hay productos terminados con disponible bajo el mínimo.")
 

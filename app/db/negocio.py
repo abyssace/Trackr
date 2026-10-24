@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -70,8 +71,33 @@ class TipoUTD(Base):
     tecnologia: Mapped[Optional[str]] = mapped_column(String(60))
 
 
+class Categoria(Base):
+    __tablename__ = "categorias"
+    __table_args__ = (UniqueConstraint("nombre", name="uq_categorias_nombre"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(100))
+    descripcion: Mapped[Optional[str]] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(default=True)
+
+
+class Proveedor(Base):
+    __tablename__ = "proveedores"
+    __table_args__ = (UniqueConstraint("nombre", name="uq_proveedores_nombre"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(150))
+    contacto: Mapped[Optional[str]] = mapped_column(String(100))
+    telefono: Mapped[Optional[str]] = mapped_column(String(20))
+    correo: Mapped[Optional[str]] = mapped_column(String(120))
+    activo: Mapped[bool] = mapped_column(default=True)
+
+
 class Producto(Base):
     __tablename__ = "productos"
+    __table_args__ = (
+        UniqueConstraint("codigo", name="uq_productos_codigo"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(100), index=True)
@@ -84,10 +110,17 @@ class Producto(Base):
     tipo_utd_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tipos_utd.id"))
     alias: Mapped[Optional[str]] = mapped_column(String(255))
     activo: Mapped[bool] = mapped_column(default=True)
+    codigo: Mapped[Optional[str]] = mapped_column(String(80))
+    categoria_id: Mapped[Optional[int]] = mapped_column(ForeignKey("categorias.id"))
+    proveedor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("proveedores.id"))
+    precio_compra: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    precio_venta: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
 
     medidor: Mapped[Optional["Medidor"]] = relationship()
     tamano: Mapped[Optional["Tamano"]] = relationship()
     tipo_utd: Mapped[Optional["TipoUTD"]] = relationship()
+    categoria: Mapped[Optional["Categoria"]] = relationship()
+    proveedor: Mapped[Optional["Proveedor"]] = relationship()
 
 
 class Receta(Base):

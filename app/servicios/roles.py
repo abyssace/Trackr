@@ -56,3 +56,27 @@ def filtrar_tools(rol: str | None, tools: Iterable) -> list:
 
 def roles_validos() -> list[str]:
     return [r.value for r in Rol]
+
+
+def puede_editar_productos(rol: str | None) -> bool:
+    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}
+
+
+def puede_registrar_movimientos(rol: str | None) -> bool:
+    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}
+
+
+def puede_desactivar_productos(rol: str | None) -> bool:
+    return rol == Rol.ADMINISTRADOR.value
+
+
+def puede_ver_precio_compra(rol: str | None) -> bool:
+    return rol == Rol.ADMINISTRADOR.value
+
+
+def puede_ver_precio_venta(rol: str | None) -> bool:
+    return rol in {Rol.ADMINISTRADOR.value, Rol.VENDEDOR.value}
+
+
+def puede_ver_historial_inventario(rol: str | None) -> bool:
+    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}

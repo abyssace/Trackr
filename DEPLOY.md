@@ -57,6 +57,26 @@ railway run -- uv run python -m scripts.crear_usuario \
 - Descarga el backup más reciente desde `/api/admin/backup` con un usuario administrador.
 - Para restaurar localmente, copia el backup sobre `trackr.db`.
 
+## Migraciones de SQLite
+
+El esquema no se migra automáticamente al arrancar la aplicación. Antes de iniciar
+una versión nueva, crea una copia de seguridad y aplica las migraciones con la
+misma `DATABASE_URL` que usará Trackr:
+
+```bash
+uv run alembic upgrade head
+```
+
+En una base existente, detén la aplicación y verifica el backup antes de ejecutar
+el comando. La migración de catálogo es aditiva y usa modo batch de SQLite para
+conservar los productos existentes. No se ejecuta desde `app.main` ni desde el
+seed. El downgrade de catálogo está bloqueado para evitar que se borren códigos,
+precios o relaciones; para volver atrás, restaura un backup revisado.
+
+En una base nueva también se usa `alembic upgrade head`; Alembic crea el esquema
+inicial y registra la revisión. Ejecuta `scripts.seed_negocio` solo después de
+migrar y únicamente contra un archivo SQLite local.
+
 ## Notas
 
 - No ejecutes más de una réplica contra el mismo volumen SQLite.

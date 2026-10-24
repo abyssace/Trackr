@@ -10,9 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
-from app.db.base import Base, engine
+from app.db.base import engine
 import app.db.negocio  # noqa: F401  registra modelos de negocio en Base.metadata
-from app.api import auth, chat, eventos, admin, health
+from app.api import auth, chat, eventos, admin, health, inventario
 from app.servicios.scheduler import start_scheduler, stop_scheduler
 
 MAIN_LOOP: asyncio.AbstractEventLoop | None = None
@@ -21,7 +21,6 @@ MAIN_LOOP: asyncio.AbstractEventLoop | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global MAIN_LOOP
-    Base.metadata.create_all(bind=engine)
     MAIN_LOOP = asyncio.get_event_loop()
     start_scheduler(MAIN_LOOP)
     yield
@@ -40,5 +39,6 @@ app.include_router(chat.router)
 app.include_router(eventos.router)
 app.include_router(admin.router)
 app.include_router(health.router)
+app.include_router(inventario.router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

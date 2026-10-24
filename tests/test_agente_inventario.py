@@ -1,6 +1,7 @@
 import pytest
 
 from app.agente.agente import (
+    _extraer_cambio_minimo,
     _respuesta_directa_herramientas,
     _solicita_conteo_productos_activos,
     _system_prompt,
@@ -170,3 +171,33 @@ async def test_pregunta_directa_de_conteo_usa_herramienta_sin_pedir_al_llm():
     assert _solicita_conteo_productos_activos(
         "¿Cuántos productos activos tenemos y cuáles están agotados?"
     ) is False
+
+
+@pytest.mark.anyio
+async def test_peticion_clara_de_minimo_usa_tool_y_pide_confirmacion():
+    class FakeUpdateTool:
+        name = "actualizar_stock_minimo"
+        received = None
+
+        async def ainvoke(self, args):
+            self.received = args
+            return "Voy a cambiar el mínimo. ¿Confirmas?"
+
+    tool = FakeUpdateTool()
+    reply, used = await run_agent(
+        "Puedes cambiar que el mínimo de destornilladores allen sean de 40",
+        [tool],
+        usuario=None,
+    )
+    assert _extraer_cambio_minimo(
+        "Puedes cambiar que el mínimo de destornilladores allen sean de 40"
+    ) == {"producto": "destornilladores allen", "stock_minimo": 40}
+    assert tool.received == {"producto": "destornilladores allen", "stock_minimo": 40}
+    assert reply == "Voy a cambiar el mínimo. ¿Confirmas?"
+    assert used[0][0] == "actualizar_stock_minimo"
+
+
+def test_pregunta_como_hacer_cambio_no_se_ejecuta_directamente():
+    assert _extraer_cambio_minimo(
+        "¿Cómo puedo cambiar el mínimo del destornillador allen a 40?"
+    ) is None

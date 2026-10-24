@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -42,6 +43,39 @@ def _solicita_conteo_productos_activos(mensaje: str) -> bool:
         and "activo" in texto
         and not consulta_compuesta_o_de_precio
     )
+
+
+def _extraer_cambio_minimo(mensaje: str) -> dict | None:
+    texto = normalizar_busqueda(mensaje)
+    if texto.lstrip("¿¡ ").startswith("como ") or " minimo " not in f" {texto} ":
+        return None
+    if not any(verbo in texto for verbo in ("cambiar", "cambia", "actualizar", "actualiza", "ajustar", "ajusta", "poner", "pon ")):
+        return None
+
+    cantidad_match = re.search(
+        r"\b(?:a|en|de|por)\s*(\d+)\s*(?:piezas?)?\s*[?.!]*$",
+        mensaje,
+        flags=re.IGNORECASE,
+    )
+    if cantidad_match is None:
+        return None
+    prefijo = mensaje[:cantidad_match.start()].strip()
+    producto_match = re.search(
+        r"m[ií]nimo\s+(?:(?:de\s+(?:la|los|las))|del|de|para)?\s*(.+)$",
+        prefijo,
+        flags=re.IGNORECASE,
+    )
+    if producto_match is None:
+        return None
+    producto = re.sub(
+        r"\s+(?:sea|sean|quede|queden|a|en|de)$",
+        "",
+        producto_match.group(1).strip(" .?!"),
+        flags=re.IGNORECASE,
+    ).strip()
+    if not producto:
+        return None
+    return {"producto": producto, "stock_minimo": int(cantidad_match.group(1))}
 
 
 def _system_prompt() -> str:
@@ -103,6 +137,18 @@ async def run_agent(
         if count_tool is not None:
             resultado = str(await count_tool.ainvoke({}))
             return resultado, [(count_tool.name, "{}", resultado)]
+
+    cambio_minimo = _extraer_cambio_minimo(mensaje)
+    if cambio_minimo is not None:
+        update_tool = next(
+            (t for t in tools if t.name == "actualizar_stock_minimo"),
+            None,
+        )
+        if update_tool is None:
+            return "Solo administración y almacén pueden cambiar el mínimo de stock.", []
+        args_json = json.dumps(cambio_minimo, ensure_ascii=False)
+        resultado = str(await update_tool.ainvoke(cambio_minimo))
+        return resultado, [(update_tool.name, args_json, resultado)]
 
     model = ChatOpenAI(
         model=settings.MODEL_AGENTE,

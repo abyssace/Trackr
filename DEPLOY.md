@@ -68,10 +68,11 @@ uv run alembic upgrade head
 ```
 
 En una base existente, detén la aplicación y verifica el backup antes de ejecutar
-el comando. La migración de catálogo es aditiva y usa modo batch de SQLite para
-conservar los productos existentes. No se ejecuta desde `app.main` ni desde el
-seed. El downgrade de catálogo está bloqueado para evitar que se borren códigos,
-precios o relaciones; para volver atrás, restaura un backup revisado.
+el comando. Las migraciones de catálogo, movimientos y campos de roles/auditoría
+son aditivas y usan modo batch de SQLite para conservar productos y movimientos
+existentes. No se ejecutan desde `app.main` ni desde el seed. Los downgrades están bloqueados para evitar
+eliminar códigos, precios, relaciones o responsables; para volver atrás, restaura
+un backup revisado.
 
 En una base nueva también se usa `alembic upgrade head`; Alembic crea el esquema
 inicial y registra la revisión. Ejecuta `scripts.seed_negocio` solo después de

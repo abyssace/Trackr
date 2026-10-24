@@ -130,6 +130,7 @@ def test_listar_stock_bajo_terminado(db, negocio):
     resp = _listar_stock_bajo(db)
     assert "Productos terminados" in resp
     assert "Medidor A-100" in resp
+    assert "Advertencia ámbar" in resp
 
 
 def test_consultar_estado_pedido_por_numero(db, negocio):

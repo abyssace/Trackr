@@ -1,12 +1,13 @@
 import pytest
 from pathlib import Path
+from decimal import Decimal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from alembic import command
 from alembic.config import Config
 
 from scripts.seed_negocio import seed, _es_sqlite_local
-from app.db.negocio import MovimientoInventario, Producto
+from app.db.negocio import Categoria, MovimientoInventario, Producto, Proveedor
 
 
 def _prepare_database(path: Path):
@@ -29,6 +30,10 @@ def test_seed_refuses_in_memory_sqlite(monkeypatch):
         seed()
 
 
+def test_seed_refuses_memory_mode_sqlite_uri():
+    assert _es_sqlite_local("sqlite:///file:memdb1?mode=memory&cache=shared") is False
+
+
 def test_seed_accepts_local_sqlite_and_is_additive_idempotent(tmp_path):
     db_path = tmp_path / "seed_local.db"
     _prepare_database(db_path)
@@ -40,6 +45,11 @@ def test_seed_accepts_local_sqlite_and_is_additive_idempotent(tmp_path):
     with Session(engine) as db:
         first_products = db.query(Producto).count()
         first_movements = db.query(MovimientoInventario).count()
+        assert db.query(Categoria).count() >= 3
+        assert db.query(Proveedor).count() >= 2
+        demo = db.query(Producto).filter_by(codigo="DEMO-MED-001").one()
+        assert demo.precio_compra == Decimal("420.00")
+        assert demo.precio_venta == Decimal("690.00")
         custom = Producto(nombre="Producto del usuario", tipo="componente", activo=True)
         db.add(custom)
         db.commit()

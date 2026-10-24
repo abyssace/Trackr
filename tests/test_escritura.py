@@ -15,11 +15,13 @@ from app.db.negocio import (
 )
 from app.agente.tools.ejecutores import (
     ejecutar_crear_pedido,
+    ejecutar_editar_pedido,
     ejecutar_cancelar_pedido,
     ejecutar_marcar_entregado,
     ejecutar_registrar_entrada_mercancia,
     ejecutar_registrar_terminado,
 )
+from app.servicios.inventario import stock_reservado
 
 
 @pytest.fixture
@@ -75,14 +77,21 @@ async def test_crear_pedido_permite_stock_negativo(db, base_negocio):
 
 
 @pytest.mark.anyio
-async def test_marcar_entregado_descuenta_inventario(db, base_negocio):
+async def test_marcar_entregado_descuenta_inventario(db, usuario, base_negocio):
     pedido = Pedido(cliente_id=base_negocio["cliente"].id, estado="pendiente", tipo_entrega="directa")
     db.add(pedido)
     db.flush()
     db.add(PedidoItem(pedido_id=pedido.id, producto_id=base_negocio["terminado"].id, cantidad=3))
     db.commit()
 
-    resultado = await ejecutar_marcar_entregado(db, {"pedido_id": pedido.id})
+    resultado = await ejecutar_marcar_entregado(
+        db,
+        {
+            "pedido_id": pedido.id,
+            "_responsable_usuario_id": usuario.id,
+            "_idempotency_base": "test-entrega",
+        },
+    )
     db.commit()
     assert "entregado" in resultado
 
@@ -95,7 +104,7 @@ async def test_marcar_entregado_descuenta_inventario(db, base_negocio):
 
 
 @pytest.mark.anyio
-async def test_cancelar_pedido_revierte_inventario(db, base_negocio):
+async def test_cancelar_pedido_revierte_inventario(db, usuario, base_negocio):
     pedido = Pedido(cliente_id=base_negocio["cliente"].id, estado="enviado", tipo_entrega="directa")
     db.add(pedido)
     db.flush()
@@ -104,7 +113,14 @@ async def test_cancelar_pedido_revierte_inventario(db, base_negocio):
     db.add(MovimientoInventario(producto_id=base_negocio["terminado"].id, cantidad=-2, tipo_movimiento="venta", pedido_id=pedido.id))
     db.commit()
 
-    resultado = await ejecutar_cancelar_pedido(db, {"pedido_id": pedido.id})
+    resultado = await ejecutar_cancelar_pedido(
+        db,
+        {
+            "pedido_id": pedido.id,
+            "_responsable_usuario_id": usuario.id,
+            "_idempotency_base": "test-cancelacion",
+        },
+    )
     db.commit()
     assert "cancelado" in resultado
     assert pedido.estado == "cancelado"
@@ -119,11 +135,42 @@ async def test_cancelar_pedido_revierte_inventario(db, base_negocio):
 
 
 @pytest.mark.anyio
-async def test_registrar_entrada_aumenta_stock(db, base_negocio):
+async def test_editar_pedido_archiva_linea_anterior_sin_borrarla(db, base_negocio):
+    pedido = Pedido(cliente_id=base_negocio["cliente"].id, estado="pendiente")
+    db.add(pedido)
+    db.flush()
+    anterior = PedidoItem(
+        pedido_id=pedido.id,
+        producto_id=base_negocio["terminado"].id,
+        cantidad=3,
+    )
+    db.add(anterior)
+    db.commit()
+
+    resultado = await ejecutar_editar_pedido(
+        db,
+        {
+            "pedido_id": pedido.id,
+            "items": [{"producto_id": base_negocio["terminado"].id, "cantidad": 5}],
+        },
+    )
+    db.commit()
+
+    db.refresh(anterior)
+    assert "actualizado" in resultado
+    assert anterior.activo is False
+    assert db.query(PedidoItem).filter_by(pedido_id=pedido.id).count() == 2
+    assert stock_reservado(db, base_negocio["terminado"].id) == 5
+
+
+@pytest.mark.anyio
+async def test_registrar_entrada_aumenta_stock(db, usuario, base_negocio):
     args = {
         "producto_id": base_negocio["componente"].id,
         "cantidad": 50,
         "empleado_recibe_id": base_negocio["empleado"].id,
+        "_responsable_usuario_id": usuario.id,
+        "_idempotency_base": "test-entrada",
     }
     resultado = await ejecutar_registrar_entrada_mercancia(db, args)
     db.commit()
@@ -134,8 +181,13 @@ async def test_registrar_entrada_aumenta_stock(db, base_negocio):
 
 
 @pytest.mark.anyio
-async def test_registrar_terminado_descuenta_componentes(db, base_negocio):
-    args = {"producto_id": base_negocio["terminado"].id, "cantidad": 5}
+async def test_registrar_terminado_descuenta_componentes(db, usuario, base_negocio):
+    args = {
+        "producto_id": base_negocio["terminado"].id,
+        "cantidad": 5,
+        "_responsable_usuario_id": usuario.id,
+        "_idempotency_base": "test-produccion",
+    }
     resultado = await ejecutar_registrar_terminado(db, args)
     db.commit()
     assert "Producción registrada" in resultado

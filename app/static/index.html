@@ -79,8 +79,16 @@
     .product-card.low-stock { border-left-color: #c62828; background: #fff7f7; }
     .product-card .warning { color: #8a5a00; background: #fff4d6; padding: 0.5rem; border-radius: 0.4rem; }
     .muted { color: #666; }
-    #categoryChart { width: 100%; height: auto; min-height: 80px; }
+    #categoryChart { display: grid; gap: 0.65rem; width: 100%; max-width: 640px; }
+    .category-row { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(80px, 2fr) 3rem; gap: 0.5rem; align-items: center; }
+    .category-label { overflow-wrap: anywhere; font-size: 0.9rem; }
+    .category-bar { width: 100%; height: 20px; display: block; }
+    .category-count { text-align: right; font-variant-numeric: tabular-nums; }
     .status-message { padding: 0.8rem; border-radius: 0.5rem; background: #f4f6f8; }
+    form label { display: block; margin-top: 0.65rem; }
+    form input, form select, form textarea { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0.55rem; margin: 0.25rem 0; }
+    form textarea { min-height: 70px; }
+    .row { flex-wrap: wrap; }
     @media (max-width: 560px) {
       body { margin-top: 0.5rem; }
       h1 { font-size: 1.6rem; }
@@ -108,13 +116,11 @@
   <nav id="appNav" class="app-nav hidden" aria-label="Secciones de Trackr">
     <button id="showChatBtn" type="button" aria-current="page">Chat</button>
     <button id="showInventoryBtn" type="button">Inventario</button>
+    <button id="logoutBtn" type="button">Cerrar sesión</button>
   </nav>
 
   <div id="chatBox" class="box hidden">
-    <div class="row" style="justify-content: space-between; align-items: center;">
-      <h3>Chat</h3>
-      <button id="logoutBtn">Cerrar sesión</button>
-    </div>
+    <h3>Chat</h3>
     <div id="messages"></div>
     <form id="chatForm" class="row">
       <input type="text" id="messageInput" placeholder="Escribe un mensaje..." autocomplete="off" required />
@@ -136,7 +142,7 @@
       <div id="inventoryKpis" class="inventory-grid" aria-live="polite"></div>
       <div class="box">
         <h3>Existencias por categoría</h3>
-        <svg id="categoryChart" viewBox="0 0 640 100" role="img" aria-label="Gráfica de existencias por categoría"></svg>
+        <div id="categoryChart" role="list" aria-label="Existencias por categoría"></div>
         <p id="chartEmpty" class="muted hidden">Todavía no hay productos para mostrar.</p>
       </div>
       <label for="productSearch"><strong>Buscar producto</strong></label>
@@ -144,9 +150,116 @@
         <input id="productSearch" type="search" placeholder="Nombre, categoría o código de barras" autocomplete="off" />
         <button type="submit">Buscar</button>
       </form>
-      <p id="inventoryMessage" class="status-message" role="status">Cargando inventario…</p>
-      <div id="productList" class="product-list" aria-live="polite"></div>
+    <p id="inventoryMessage" class="status-message" role="status">Cargando inventario…</p>
+    <div id="productList" class="product-list" aria-live="polite"></div>
+
+    <section id="inventoryWritePanel" class="box hidden" aria-labelledby="writeInventoryTitle">
+      <h3 id="writeInventoryTitle">Administrar inventario</h3>
+      <form id="productForm" class="box">
+        <h4 id="productFormTitle">Agregar producto</h4>
+        <label for="productName">Nombre</label>
+        <input id="productName" type="text" maxlength="100" required />
+        <label for="productType">Tipo</label>
+        <select id="productType" required>
+          <option value="componente">Componente</option>
+          <option value="terminado">Producto terminado</option>
+        </select>
+        <label for="productCode">SKU o código de barras</label>
+        <input id="productCode" type="text" maxlength="80" />
+        <label for="productUnit">Unidad (por ejemplo: pieza)</label>
+        <input id="productUnit" type="text" maxlength="20" />
+        <label for="productCategory">Categoría</label>
+        <select id="productCategory"><option value="">Sin categoría</option></select>
+        <label for="productSupplier">Proveedor principal</label>
+        <select id="productSupplier"><option value="">Sin proveedor</option></select>
+        <label for="productMinimum">Avisarme cuando llegue a esta cantidad</label>
+        <input id="productMinimum" type="number" min="0" step="1" />
+        <div id="productPriceFields" class="inventory-grid hidden">
+          <div><label for="productPurchasePrice">Precio de compra (MXN)</label><input id="productPurchasePrice" type="number" min="0" step="0.01" /></div>
+          <div><label for="productSalePrice">Precio de venta (MXN)</label><input id="productSalePrice" type="number" min="0" step="0.01" /></div>
+        </div>
+        <label for="productDescription">Descripción</label>
+        <textarea id="productDescription" rows="2" maxlength="4000"></textarea>
+        <div class="row">
+          <button id="saveProductBtn" type="submit">Guardar producto</button>
+          <button id="cancelProductEditBtn" type="button" class="hidden">Cancelar edición</button>
+        </div>
+        <p id="productFormMessage" role="status"></p>
+      </form>
+
+      <form id="movementForm" class="box">
+        <h4>Registrar entrada o salida</h4>
+        <label for="movementProduct">Producto</label>
+        <select id="movementProduct" required></select>
+        <label for="movementType">Tipo de movimiento</label>
+        <select id="movementType" required>
+          <option value="compra">Compra</option>
+          <option value="reabastecimiento">Reabastecimiento</option>
+          <option value="venta_mostrador">Venta de mostrador (sin pedido)</option>
+          <option value="merma">Merma</option>
+          <option value="ajuste">Ajuste de inventario</option>
+        </select>
+        <div id="adjustmentDirectionBox" class="hidden">
+          <label for="adjustmentDirection">El ajuste…</label>
+          <select id="adjustmentDirection">
+            <option value="">Elige una opción</option>
+            <option value="entrada">Aumenta el stock</option>
+            <option value="salida">Disminuye el stock</option>
+          </select>
+        </div>
+        <label for="movementQuantity">Cantidad (entera)</label>
+        <input id="movementQuantity" type="number" min="1" step="1" required />
+        <label for="movementReference">Referencia (opcional)</label>
+        <input id="movementReference" type="text" maxlength="100" />
+        <label for="movementNotes">Nota (opcional)</label>
+        <textarea id="movementNotes" rows="2" maxlength="4000"></textarea>
+        <button id="saveMovementBtn" type="submit">Registrar movimiento</button>
+        <p id="movementFormMessage" role="status"></p>
+      </form>
+
+      <section id="movementHistoryPanel" class="box" aria-labelledby="movementHistoryTitle">
+        <h4 id="movementHistoryTitle">Historial de movimientos</h4>
+        <form id="movementFilterForm" class="inventory-grid">
+          <label>Producto
+            <select id="historyProduct"><option value="">Todos</option></select>
+          </label>
+          <label>Tipo
+            <select id="historyType">
+              <option value="">Todos</option>
+              <option value="compra">Compra</option>
+              <option value="reabastecimiento">Reabastecimiento</option>
+              <option value="venta_mostrador">Venta de mostrador</option>
+              <option value="venta">Venta de pedido</option>
+              <option value="merma">Merma</option>
+              <option value="ajuste">Ajuste</option>
+              <option value="entrada">Entrada anterior</option>
+              <option value="salida">Salida anterior</option>
+              <option value="produccion_salida">Consumo de producción</option>
+              <option value="produccion_entrada">Producto terminado</option>
+            </select>
+          </label>
+          <label>Responsable
+            <select id="historyUser"><option value="">Todos</option></select>
+          </label>
+          <label>Desde (hora local)<input id="historyFrom" type="datetime-local" /></label>
+          <label>Hasta (hora local)<input id="historyTo" type="datetime-local" /></label>
+          <button type="submit">Filtrar movimientos</button>
+        </form>
+        <p id="historyMessage" class="status-message" role="status"></p>
+        <div id="movementHistoryList" class="product-list" aria-live="polite"></div>
+      </section>
     </section>
+
+    <section class="box" aria-labelledby="cameraTitle">
+      <h3 id="cameraTitle">Escanear código con cámara</h3>
+      <p id="cameraMessage" class="muted">También puedes escribir el código en la búsqueda.</p>
+      <div class="row">
+        <button id="startCameraBtn" type="button">Abrir cámara</button>
+        <button id="stopCameraBtn" type="button" class="hidden">Cerrar cámara</button>
+      </div>
+      <video id="barcodeVideo" class="hidden" playsinline muted style="width:100%;max-height:280px;margin-top:0.75rem;"></video>
+    </section>
+  </section>
   </main>
 
   <script>
@@ -171,9 +284,34 @@
     const productSearchForm = document.getElementById('productSearchForm');
     const productList = document.getElementById('productList');
     const inventoryMessage = document.getElementById('inventoryMessage');
+    const inventoryWritePanel = document.getElementById('inventoryWritePanel');
+    const productForm = document.getElementById('productForm');
+    const productFormTitle = document.getElementById('productFormTitle');
+    const productFormMessage = document.getElementById('productFormMessage');
+    const productCategory = document.getElementById('productCategory');
+    const productSupplier = document.getElementById('productSupplier');
+    const productPriceFields = document.getElementById('productPriceFields');
+    const cancelProductEditBtn = document.getElementById('cancelProductEditBtn');
+    const movementForm = document.getElementById('movementForm');
+    const movementFormMessage = document.getElementById('movementFormMessage');
+    const movementType = document.getElementById('movementType');
+    const adjustmentDirectionBox = document.getElementById('adjustmentDirectionBox');
+    const movementProduct = document.getElementById('movementProduct');
+    const historyProduct = document.getElementById('historyProduct');
+    const historyUser = document.getElementById('historyUser');
+    const historyMessage = document.getElementById('historyMessage');
+    const movementHistoryList = document.getElementById('movementHistoryList');
+    const cameraMessage = document.getElementById('cameraMessage');
+    const barcodeVideo = document.getElementById('barcodeVideo');
 
     let eventSource = null;
     let searchTimer = null;
+    let currentRole = null;
+    let editingProductId = null;
+    let barcodeStream = null;
+    let barcodeDetector = null;
+    let scanningBarcode = false;
+    let movementAttempt = null;
 
     function addMessage(text, role) {
       const div = document.createElement('div');
@@ -187,6 +325,8 @@
       try {
         const res = await fetch('/api/me', { credentials: 'same-origin' });
         if (res.ok) {
+          const user = await res.json();
+          currentRole = user.rol;
           await showChat();
         }
       } catch (e) {
@@ -207,6 +347,7 @@
     }
 
     async function showChat() {
+      cerrarCamaraCodigo();
       loginBox.classList.add('hidden');
       appNav.classList.remove('hidden');
       chatBox.classList.remove('hidden');
@@ -224,8 +365,13 @@
       inventoryBox.classList.remove('hidden');
       document.getElementById('showInventoryBtn').setAttribute('aria-current', 'page');
       document.getElementById('showChatBtn').removeAttribute('aria-current');
+      const canManage = ['administrador', 'almacen'].includes(currentRole);
+      inventoryWritePanel.classList.toggle('hidden', !canManage);
+      productPriceFields.classList.toggle('hidden', currentRole !== 'administrador');
       await loadInventorySummary();
+      if (canManage) await loadCatalogs();
       await loadProducts(productSearch.value);
+      if (canManage) await loadMovementHistory();
     }
 
     document.getElementById('showChatBtn').addEventListener('click', showChat);
@@ -248,6 +394,7 @@
     }
 
     function showLogin() {
+      cerrarCamaraCodigo();
       chatBox.classList.add('hidden');
       inventoryBox.classList.add('hidden');
       appNav.classList.add('hidden');
@@ -296,28 +443,36 @@
     function drawCategoryChart(rows) {
       categoryChart.replaceChildren();
       chartEmpty.classList.toggle('hidden', rows.length > 0);
-      if (!rows.length) {
-        categoryChart.setAttribute('viewBox', '0 0 640 80');
-        return;
-      }
-      const rowHeight = 34;
+      if (!rows.length) return;
       const max = Math.max(1, ...rows.map(row => row.cantidad));
-      categoryChart.setAttribute('viewBox', `0 0 640 ${rows.length * rowHeight + 8}`);
-      rows.forEach((row, index) => {
-        const y = index * rowHeight + 6;
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', '4'); label.setAttribute('y', String(y + 16));
-        label.setAttribute('font-size', '13'); label.textContent = row.categoria;
+      rows.forEach(row => {
+        const item = document.createElement('div');
+        item.className = 'category-row';
+        item.setAttribute('role', 'listitem');
+        const label = document.createElement('span');
+        label.className = 'category-label';
+        label.textContent = row.categoria;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('category-bar');
+        svg.setAttribute('viewBox', '0 0 100 16');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', `${row.categoria}: ${row.cantidad}`);
+        const track = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        track.setAttribute('x', '0'); track.setAttribute('y', '2');
+        track.setAttribute('width', '100'); track.setAttribute('height', '12');
+        track.setAttribute('rx', '4'); track.setAttribute('fill', '#e8edf5');
         const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        bar.setAttribute('x', '210'); bar.setAttribute('y', String(y));
-        bar.setAttribute('width', String(Math.max(2, 360 * row.cantidad / max)));
-        bar.setAttribute('height', '22'); bar.setAttribute('rx', '4');
+        bar.setAttribute('x', '0'); bar.setAttribute('y', '2');
+        bar.setAttribute('width', String(Math.max(1, 100 * row.cantidad / max)));
+        bar.setAttribute('height', '12'); bar.setAttribute('rx', '4');
         bar.setAttribute('fill', '#2563eb');
-        const count = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        count.setAttribute('x', String(220 + 360 * row.cantidad / max));
-        count.setAttribute('y', String(y + 16)); count.setAttribute('font-size', '13');
+        svg.append(track, bar);
+        const count = document.createElement('span');
+        count.className = 'category-count';
         count.textContent = String(row.cantidad);
-        categoryChart.append(label, bar, count);
+        item.append(label, svg, count);
+        categoryChart.appendChild(item);
       });
     }
 
@@ -365,6 +520,23 @@
           sale.textContent = product.precio_venta === null ? 'Precio de venta pendiente' : `Precio de venta: ${monedaMx(product.precio_venta)}`;
           card.appendChild(sale);
         }
+        if (['administrador', 'almacen'].includes(currentRole)) {
+          const actions = document.createElement('div');
+          actions.className = 'row';
+          const editButton = document.createElement('button');
+          editButton.type = 'button';
+          editButton.textContent = 'Editar';
+          editButton.addEventListener('click', () => editarProducto(product));
+          actions.appendChild(editButton);
+          if (currentRole === 'administrador' && product.activo) {
+            const deactivateButton = document.createElement('button');
+            deactivateButton.type = 'button';
+            deactivateButton.textContent = 'Desactivar';
+            deactivateButton.addEventListener('click', () => desactivarProducto(product));
+            actions.appendChild(deactivateButton);
+          }
+          card.appendChild(actions);
+        }
         productList.appendChild(card);
       });
     }
@@ -403,6 +575,319 @@
       loadProducts(productSearch.value);
     });
 
+    function rellenarSelect(select, records, placeholder, valueKey = 'id', labelKey = 'nombre') {
+      const previous = select.value;
+      select.replaceChildren();
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = placeholder;
+      select.appendChild(first);
+      records.forEach(record => {
+        const option = document.createElement('option');
+        option.value = String(record[valueKey]);
+        option.textContent = record[labelKey];
+        select.appendChild(option);
+      });
+      if ([...select.options].some(option => option.value === previous)) select.value = previous;
+    }
+
+    async function loadCatalogs() {
+      try {
+        const response = await fetch('/api/inventario/catalogos', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('No se pudieron cargar categorías y proveedores.');
+        const data = await response.json();
+        rellenarSelect(productCategory, data.categorias || [], 'Sin categoría');
+        rellenarSelect(productSupplier, data.proveedores || [], 'Sin proveedor');
+        rellenarSelect(historyUser, data.usuarios || [], 'Todos');
+        await loadMovementProductOptions();
+      } catch (error) {
+        productFormMessage.textContent = error.message;
+      }
+    }
+
+    async function loadMovementProductOptions() {
+      const response = await fetch('/api/inventario/productos', { credentials: 'same-origin' });
+      if (!response.ok) return;
+      const records = (await response.json()).productos || [];
+      const options = records.map(product => ({
+        id: product.id,
+        nombre: product.codigo ? `${product.nombre} · ${product.codigo}` : product.nombre,
+      }));
+      rellenarSelect(movementProduct, options, 'Elige un producto');
+      rellenarSelect(historyProduct, options, 'Todos');
+    }
+
+    function numeroOTexto(value) {
+      return value === '' ? null : Number(value);
+    }
+
+    function formatearPrecioParaFormulario(value) {
+      return value === null || value === undefined ? '' : String(value);
+    }
+
+    function limpiarFormularioProducto() {
+      editingProductId = null;
+      productForm.reset();
+      productFormTitle.textContent = 'Agregar producto';
+      document.getElementById('saveProductBtn').textContent = 'Guardar producto';
+      cancelProductEditBtn.classList.add('hidden');
+      productFormMessage.textContent = '';
+      productPriceFields.classList.toggle('hidden', currentRole !== 'administrador');
+    }
+
+    function editarProducto(product) {
+      editingProductId = product.id;
+      document.getElementById('productName').value = product.nombre || '';
+      document.getElementById('productType').value = product.tipo;
+      document.getElementById('productCode').value = product.codigo || '';
+      document.getElementById('productUnit').value = product.unidad_medida || '';
+      document.getElementById('productMinimum').value = product.stock_minimo ?? '';
+      document.getElementById('productDescription').value = product.descripcion || '';
+      const category = [...productCategory.options].find(option => option.textContent === product.categoria);
+      const supplier = [...productSupplier.options].find(option => option.textContent === product.proveedor);
+      productCategory.value = category ? category.value : '';
+      productSupplier.value = supplier ? supplier.value : '';
+      if (currentRole === 'administrador') {
+        document.getElementById('productPurchasePrice').value = formatearPrecioParaFormulario(product.precio_compra);
+        document.getElementById('productSalePrice').value = formatearPrecioParaFormulario(product.precio_venta);
+      }
+      productFormTitle.textContent = `Editar: ${product.nombre}`;
+      document.getElementById('saveProductBtn').textContent = 'Guardar cambios';
+      cancelProductEditBtn.classList.remove('hidden');
+      productPriceFields.classList.toggle('hidden', currentRole !== 'administrador');
+      productForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    cancelProductEditBtn.addEventListener('click', limpiarFormularioProducto);
+
+    productForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const payload = {
+        nombre: document.getElementById('productName').value.trim(),
+        tipo: document.getElementById('productType').value,
+        codigo: document.getElementById('productCode').value.trim() || null,
+        unidad_medida: document.getElementById('productUnit').value.trim() || null,
+        categoria_id: numeroOTexto(productCategory.value),
+        proveedor_id: numeroOTexto(productSupplier.value),
+        stock_minimo: numeroOTexto(document.getElementById('productMinimum').value),
+        descripcion: document.getElementById('productDescription').value.trim() || null,
+      };
+      if (currentRole === 'administrador') {
+        payload.precio_compra = numeroOTexto(document.getElementById('productPurchasePrice').value);
+        payload.precio_venta = numeroOTexto(document.getElementById('productSalePrice').value);
+      }
+
+      const button = document.getElementById('saveProductBtn');
+      button.disabled = true;
+      productFormMessage.textContent = 'Guardando…';
+      try {
+        const editing = editingProductId !== null;
+        const url = editing
+          ? `/api/inventario/productos/${editingProductId}`
+          : '/api/inventario/productos';
+        const response = await fetch(url, {
+          method: editing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo guardar el producto.');
+        limpiarFormularioProducto();
+        productFormMessage.textContent = editing ? 'Cambios guardados.' : 'Producto guardado.';
+        await loadInventorySummary();
+        await loadProducts(productSearch.value);
+        await loadMovementProductOptions();
+      } catch (error) {
+        productFormMessage.textContent = error.message || 'Ocurrió un error al guardar.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function desactivarProducto(product) {
+      if (!window.confirm(`¿Desactivar “${product.nombre}”? Seguirá en el historial, pero dejará de aparecer en el catálogo activo.`)) return;
+      try {
+        const response = await fetch(`/api/inventario/productos/${product.id}/desactivar`, {
+          method: 'POST', credentials: 'same-origin',
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo desactivar el producto.');
+        await loadInventorySummary();
+        await loadProducts(productSearch.value);
+        await loadMovementProductOptions();
+      } catch (error) {
+        inventoryMessage.textContent = error.message;
+        inventoryMessage.classList.remove('hidden');
+      }
+    }
+
+    movementType.addEventListener('change', () => {
+      adjustmentDirectionBox.classList.toggle('hidden', movementType.value !== 'ajuste');
+    });
+
+    movementForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const payload = {
+        producto_id: Number(movementProduct.value),
+        tipo_movimiento: movementType.value,
+        cantidad: Number(document.getElementById('movementQuantity').value),
+        referencia: document.getElementById('movementReference').value.trim() || null,
+        observaciones: document.getElementById('movementNotes').value.trim() || null,
+      };
+      if (payload.tipo_movimiento === 'ajuste') {
+        payload.direccion = document.getElementById('adjustmentDirection').value;
+      }
+      const fingerprint = JSON.stringify(payload);
+      if (!movementAttempt || movementAttempt.fingerprint !== fingerprint) {
+        const key = window.crypto?.randomUUID
+          ? window.crypto.randomUUID()
+          : `mov-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        movementAttempt = { fingerprint, key };
+      }
+      payload.idempotency_key = movementAttempt.key;
+      const button = document.getElementById('saveMovementBtn');
+      button.disabled = true;
+      movementFormMessage.textContent = 'Registrando…';
+      try {
+        const response = await fetch('/api/inventario/movimientos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo registrar el movimiento.');
+        movementForm.reset();
+        movementAttempt = null;
+        adjustmentDirectionBox.classList.add('hidden');
+        const warnings = (data.advertencias || []).join(' ');
+        movementFormMessage.textContent = `${data.duplicado ? 'Este movimiento ya estaba registrado. ' : 'Movimiento registrado. '}Existencia actual: ${data.stock_actual}. ${warnings}`;
+        await loadInventorySummary();
+        await loadProducts(productSearch.value);
+        await loadMovementHistory();
+      } catch (error) {
+        movementFormMessage.textContent = error.message || 'Ocurrió un error al registrar.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    function appendIsoDate(url, name, inputId) {
+      const value = document.getElementById(inputId).value;
+      if (value) url.searchParams.set(name, new Date(value).toISOString());
+    }
+
+    async function loadMovementHistory() {
+      historyMessage.textContent = 'Cargando movimientos…';
+      historyMessage.classList.remove('hidden');
+      try {
+        const url = new URL('/api/inventario/movimientos', window.location.origin);
+        if (historyProduct.value) url.searchParams.set('producto_id', historyProduct.value);
+        if (historyType.value) url.searchParams.set('tipo', historyType.value);
+        if (historyUser.value) url.searchParams.set('usuario_id', historyUser.value);
+        appendIsoDate(url, 'desde', 'historyFrom');
+        appendIsoDate(url, 'hasta', 'historyTo');
+        const response = await fetch(url, { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo cargar el historial.');
+        const records = data.movimientos || [];
+        movementHistoryList.replaceChildren();
+        if (!records.length) {
+          historyMessage.textContent = 'No hay movimientos que coincidan con esos filtros.';
+          return;
+        }
+        historyMessage.textContent = `${records.length} movimiento(s)`;
+        records.forEach(movement => {
+          const card = document.createElement('article');
+          card.className = 'product-card';
+          const heading = document.createElement('h5');
+          heading.textContent = movement.producto;
+          const amount = document.createElement('p');
+          amount.textContent = `${movement.cantidad > 0 ? '+' : ''}${movement.cantidad} · ${movement.tipo_movimiento}`;
+          const info = document.createElement('p');
+          info.className = 'muted';
+          const date = movement.creado_en ? new Date(movement.creado_en).toLocaleString('es-MX') : 'Fecha no disponible';
+          info.textContent = `${date} · ${movement.responsable}`;
+          card.append(heading, amount, info);
+          if (movement.referencia) {
+            const reference = document.createElement('p'); reference.textContent = `Referencia: ${movement.referencia}`; card.appendChild(reference);
+          }
+          if (movement.observaciones) {
+            const note = document.createElement('p'); note.textContent = movement.observaciones; card.appendChild(note);
+          }
+          movementHistoryList.appendChild(card);
+        });
+      } catch (error) {
+        movementHistoryList.replaceChildren();
+        historyMessage.textContent = error.message || 'Ocurrió un error al consultar movimientos.';
+      }
+    }
+
+    document.getElementById('movementFilterForm').addEventListener('submit', event => {
+      event.preventDefault();
+      loadMovementHistory();
+    });
+
+    function cerrarCamaraCodigo() {
+      scanningBarcode = false;
+      if (barcodeStream) barcodeStream.getTracks().forEach(track => track.stop());
+      barcodeStream = null;
+      barcodeVideo.srcObject = null;
+      barcodeVideo.classList.add('hidden');
+      document.getElementById('startCameraBtn').classList.remove('hidden');
+      document.getElementById('stopCameraBtn').classList.add('hidden');
+    }
+
+    document.getElementById('stopCameraBtn').addEventListener('click', cerrarCamaraCodigo);
+    document.getElementById('startCameraBtn').addEventListener('click', async () => {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        cameraMessage.textContent = 'La cámara requiere una conexión segura HTTPS. Escribe el código en la búsqueda.';
+        return;
+      }
+      if (!('BarcodeDetector' in window)) {
+        cameraMessage.textContent = 'Este navegador no ofrece lectura de códigos con cámara. Escribe el código en la búsqueda.';
+        return;
+      }
+      try {
+        const available = await window.BarcodeDetector.getSupportedFormats();
+        const preferred = ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf', 'qr_code'];
+        const formats = preferred.filter(format => available.includes(format));
+        if (!formats.length) throw new Error('No hay formatos de código compatibles. Escribe el código en la búsqueda.');
+        barcodeDetector = new window.BarcodeDetector({ formats });
+        barcodeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        barcodeVideo.srcObject = barcodeStream;
+        barcodeVideo.classList.remove('hidden');
+        await barcodeVideo.play();
+        scanningBarcode = true;
+        document.getElementById('startCameraBtn').classList.add('hidden');
+        document.getElementById('stopCameraBtn').classList.remove('hidden');
+        cameraMessage.textContent = 'Apunta la cámara al código. También puedes cerrar y escribirlo.';
+        const scan = async () => {
+          if (!scanningBarcode) return;
+          try {
+            const detected = await barcodeDetector.detect(barcodeVideo);
+            if (detected.length && detected[0].rawValue) {
+              productSearch.value = detected[0].rawValue;
+              cerrarCamaraCodigo();
+              await loadProducts(productSearch.value);
+              cameraMessage.textContent = `Código leído: ${productSearch.value}`;
+              return;
+            }
+          } catch (error) {
+            cameraMessage.textContent = 'No se pudo leer el código. Escribe el código en la búsqueda.';
+            cerrarCamaraCodigo();
+            return;
+          }
+          requestAnimationFrame(scan);
+        };
+        requestAnimationFrame(scan);
+      } catch (error) {
+        cerrarCamaraCodigo();
+        cameraMessage.textContent = error.message || 'No se pudo abrir la cámara. Escribe el código en la búsqueda.';
+      }
+    });
+
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       loginError.textContent = '';
@@ -416,6 +901,8 @@
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        currentRole = data.usuario.rol;
         showChat();
       } else {
         loginError.textContent = 'Credenciales inválidas';

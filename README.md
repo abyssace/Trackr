@@ -9,7 +9,7 @@ Trackr is a web assistant for small businesses. Instead of clicking through form
 - ⏰ **Reminders** – manual reminders and automatic low-stock alerts delivered over SSE.
 - 📦 **Orders & inventory** – creating or delivering an order updates stock automatically.
 
-**Current status:** Phase 1 — reminders, chat, sessions, scheduler, and SSE on SQLite.
+**Current status:** Chat and reminders, role-controlled inventory catalog, stock ledger, movement confirmation, and SQLite backups.
 
 ---
 
@@ -33,7 +33,7 @@ flowchart TD
     U -->|SSE| E["GET /api/eventos"]
     C --> A["LangChain agent + tool calling"]
     A --> T["Tools"]
-    T --> D[("SQLAlchemy<br/>SQLite / MySQL")]
+    T --> D[("SQLAlchemy<br/>SQLite")]
     S["APScheduler"] --> D
     S --> E
 ```
@@ -41,8 +41,9 @@ flowchart TD
 Core rules:
 
 - The agent **never writes SQL**; it only calls tools.
-- Writes that affect inventory or orders will require confirmation *(designed now, implemented in Phase 1.5)*.
+- Agent-proposed writes to orders or inventory require confirmation; administrator/warehouse inventory screen writes use the same validated ledger service.
 - Nothing is hard-deleted; state changes keep an audit trail.
+- Inventory quantities come from the signed movement ledger; product stock is never stored as a second source of truth.
 - Reminders are per-user and delivered only to their SSE channel.
 - The scheduler claims due reminders atomically so multiple workers can never fire the same one.
 
@@ -55,7 +56,7 @@ Core rules:
 | Backend | Python 3.11+, FastAPI |
 | Agent | LangChain + OpenAI-compatible API (OpenRouter by default) |
 | ORM | SQLAlchemy 2.x |
-| DB | SQLite (dev) → MySQL (prod) |
+| DB | SQLite |
 | Scheduler | APScheduler |
 | Frontend | Plain HTML + JavaScript (SSE, MediaRecorder later) |
 | Packaging | `uv` |
@@ -64,36 +65,28 @@ Core rules:
 
 ## Project structure
 
-```
+```text
 .
 ├── app/
-│   ├── main.py                 # FastAPI entry point
-│   ├── config.py               # Settings from .env
-│   ├── api/
-│   │   ├── auth.py             # login / logout / me
-│   │   ├── chat.py             # POST /api/chat
-│   │   └── eventos.py          # GET /api/eventos (SSE)
+│   ├── main.py
+│   ├── config.py
+│   ├── api/                  # auth, chat, SSE, admin, health, inventory
 │   ├── agente/
-│   │   ├── agente.py           # LangChain agent loop
-│   │   └── tools/
-│   │       ├── recordatorios.py
-│   │       └── negocio.py      # read-only inventory/order tools
+│   │   ├── agente.py
+│   │   └── tools/            # reminders, read tools, confirmed writes, executors
 │   ├── db/
-│   │   ├── base.py             # engine, session, Base
-│   │   ├── modelos.py          # Trackr auth/chat models
-│   │   └── negocio.py          # business models (clients, orders, inventory)
-│   ├── servicios/
-│   │   ├── scheduler.py        # reminder firing job
-│   │   └── event_queue.py      # per-user SSE queues
-│   └── static/index.html       # minimal chat UI
-├── scripts/
-│   ├── crear_usuario.py        # create the first user
-│   └── seed_negocio.py         # idempotent SQLite seed data
-├── tests/                      # pytest suite
+│   │   ├── base.py
+│   │   ├── modelos.py        # Trackr users, sessions, messages, audit
+│   │   └── negocio.py        # catalog, orders and inventory ledger
+│   ├── servicios/            # roles, stock, movements, backups, scheduler
+│   └── static/               # responsive HTML/JS, PWA assets
+├── migrations/               # Alembic revisions; SQLite batch mode
+├── scripts/                  # user and local-only business seed
+├── tests/
+├── Dockerfile
+├── DEPLOY.md
 ├── pyproject.toml
-├── uv.lock
-├── .env.example
-└── README.md
+└── uv.lock
 ```
 
 ---
@@ -110,13 +103,16 @@ uv sync --group dev
 cp .env.example .env
 # Edit .env with your keys
 
-# 3. Create the first user
-uv run python -m scripts.crear_usuario
+# 3. Create or update the database schema (Alembic; SQLite)
+uv run alembic upgrade head
 
-# 4. Seed business data (SQLite file only)
+# 4. Create the first user
+uv run python -m scripts.crear_usuario --username admin --password "<segura>" --nombre "Administrador" --rol administrador
+
+# 5. Add example business and inventory data (local SQLite file only)
 uv run python -m scripts.seed_negocio
 
-# 5. Run the server
+# 6. Run the server
 uv run uvicorn app.main:app --reload --host 127.0.0.1
 ```
 
@@ -159,6 +155,14 @@ uv run pytest -v
 | `POST` | `/api/confirmar` | Confirm the pending write action. |
 | `POST` | `/api/cancelar` | Cancel the pending write action. |
 | `GET`  | `/api/eventos` | SSE stream for reminders. |
+| `GET` | `/api/inventario/productos` | Active product catalog with role-filtered prices; supports name/category/code search. |
+| `GET` | `/api/inventario/resumen` | Stock KPIs and role-filtered inventory values. |
+| `GET` | `/api/inventario/catalogos` | Active categories and suppliers. |
+| `POST` | `/api/inventario/productos` | Create a product, permitted roles only. |
+| `PATCH` | `/api/inventario/productos/{id}` | Edit a product, permitted roles only. |
+| `POST` | `/api/inventario/productos/{id}/desactivar` | Admin-only soft delete; preserves history. |
+| `GET` | `/api/inventario/movimientos` | Admin/warehouse movement history with filters. |
+| `POST` | `/api/inventario/movimientos` | Register permitted stock entries and exits. |
 
 ---
 
@@ -188,12 +192,13 @@ Per-user chat history used by the agent as conversational memory.
 |---|---|
 | `clientes` | Customers. |
 | `empleados` | Employees; optionally linked to a Trackr `usuario`. |
+| `categorias`, `proveedores` | Product catalog group and one main supplier. |
 | `tipos_medidor`, `medidores`, `tamanos`, `tipos_utd` | Product catalogs. |
-| `productos` | **One stock table** for components and finished goods. `tipo` = `componente` or `terminado`. |
+| `productos` | **One catalog table** for components and finished goods, with optional unique code, category, supplier and MXN prices. `tipo` = `componente` or `terminado`. |
 | `recetas` | Bill of materials: components required for a finished product. |
 | `pedidos` | Orders with status, delivery type, carrier and tracking number. |
 | `pedido_items` | Order lines. |
-| `movimientos_inventario` | **Single ledger**; stock is derived from here, never from a snapshot. |
+| `movimientos_inventario` | **Single ledger**; signed quantity and UTC timestamp determine physical stock. New movements store the session user and an idempotency key. |
 
 Dropped from the original schema: `estados`, `componentes`, `equipos`, `equipos_terminados`, `equipos_en_stock`, `detalle_pedido`, `receta_equipo`, `equipo_componentes`, `evidencias`, `carpetas_evidencias`.
 

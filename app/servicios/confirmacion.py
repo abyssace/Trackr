@@ -100,9 +100,19 @@ async def confirmar_pendiente(
         )
 
     args = json.loads(pendiente.args)
-    resultado = await ejecutor(db, args)
-
-    pendiente.estado = "confirmada"
-    pendiente.confirmado_por_usuario_id = usuario.id
+    # Esta información la agrega el servidor; no puede elegirla el modelo.
+    args["_responsable_usuario_id"] = usuario.id
+    args["_idempotency_base"] = f"accion:{pendiente.id}"
+    try:
+        # Un executor puede generar varios movimientos. El savepoint exterior
+        # garantiza que todos se confirman o ninguno.
+        with db.begin_nested():
+            resultado = await ejecutor(db, args)
+            pendiente.estado = "confirmada"
+            pendiente.confirmado_por_usuario_id = usuario.id
+            db.flush()
+    except Exception:
+        db.rollback()
+        raise
     db.commit()
     return resultado

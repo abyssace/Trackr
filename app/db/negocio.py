@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
-from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -159,6 +159,7 @@ class PedidoItem(Base):
     cantidad: Mapped[int]
     precio_unitario: Mapped[Optional[float]]
     inventario_descontado: Mapped[bool] = mapped_column(default=False)
+    activo: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
 
     pedido: Mapped["Pedido"] = relationship(back_populates="items")
@@ -167,6 +168,9 @@ class PedidoItem(Base):
 
 class MovimientoInventario(Base):
     __tablename__ = "movimientos_inventario"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_movimientos_idempotency_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     producto_id: Mapped[int] = mapped_column(ForeignKey("productos.id"))
@@ -175,6 +179,8 @@ class MovimientoInventario(Base):
     pedido_id: Mapped[Optional[int]] = mapped_column(ForeignKey("pedidos.id"))
     empleado_id: Mapped[Optional[int]] = mapped_column(ForeignKey("empleados.id"))
     empleado_entrega_id: Mapped[Optional[int]] = mapped_column(ForeignKey("empleados.id"))
+    usuario_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"))
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(120))
     referencia: Mapped[Optional[str]] = mapped_column(String(100))
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(default=utc_now)

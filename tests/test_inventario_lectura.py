@@ -3,7 +3,15 @@ from decimal import Decimal
 import pytest
 
 from app.db.modelos import Usuario
-from app.db.negocio import Categoria, MovimientoInventario, Producto, Proveedor
+from app.db.negocio import (
+    Categoria,
+    Cliente,
+    MovimientoInventario,
+    Pedido,
+    PedidoItem,
+    Producto,
+    Proveedor,
+)
 from app.servicios.auth import get_password_hash
 from app.servicios.inventario import (
     calcular_kpis_inventario,
@@ -239,3 +247,39 @@ def test_solo_administrador_puede_incluir_inactivos(client, db):
         params={"incluir_inactivos": "true"},
     )
     assert response.status_code == 403
+
+
+def test_api_devuelve_alerta_roja_fisica_y_ambar_por_comprometido(client, db):
+    _crear_usuario(db, Rol.SOLO_LECTURA.value)
+    cliente = Cliente(nombre="Cliente reservado")
+    producto = Producto(
+        nombre="Medidor terminado reservado",
+        tipo="terminado",
+        stock_minimo=5,
+        unidad_medida="pieza",
+    )
+    db.add_all([cliente, producto])
+    db.flush()
+    pedido = Pedido(cliente_id=cliente.id, estado="pendiente")
+    db.add(pedido)
+    db.flush()
+    db.add_all(
+        [
+            MovimientoInventario(
+                producto_id=producto.id,
+                cantidad=12,
+                tipo_movimiento="entrada",
+            ),
+            PedidoItem(pedido_id=pedido.id, producto_id=producto.id, cantidad=10),
+        ]
+    )
+    db.commit()
+    _login(client, "user_solo_lectura")
+
+    response = client.get("/api/inventario/productos")
+    data = response.json()["productos"][0]
+    assert response.status_code == 200
+    assert data["bajo_minimo"] is False
+    assert data["stock_comprometido"] == 10
+    assert data["stock_disponible"] == 2
+    assert data["disponible_bajo_minimo"] is True

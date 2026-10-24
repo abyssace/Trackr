@@ -27,6 +27,7 @@ def stock_reservado(db: Session, producto_id: int) -> int:
         .join(Pedido)
         .filter(
             PedidoItem.producto_id == producto_id,
+            PedidoItem.activo == True,
             Pedido.estado == "pendiente",
         )
         .scalar()

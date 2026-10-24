@@ -81,7 +81,10 @@ async def login(
     db.commit()
 
     request.session["user_id"] = user.id
-    return {"ok": True, "usuario": {"id": user.id, "nombre": user.nombre}}
+    return {
+        "ok": True,
+        "usuario": {"id": user.id, "nombre": user.nombre, "rol": user.rol},
+    }
 
 
 @router.post("/logout")
@@ -92,4 +95,9 @@ async def logout(request: Request):
 
 @router.get("/me")
 async def me(usuario: Usuario = Depends(get_current_user)):
-    return {"id": usuario.id, "nombre": usuario.nombre, "username": usuario.username}
+    return {
+        "id": usuario.id,
+        "nombre": usuario.nombre,
+        "username": usuario.username,
+        "rol": usuario.rol,
+    }

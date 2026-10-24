@@ -4,34 +4,44 @@ from app.db.negocio import (
     Pedido,
     PedidoItem,
     Producto,
-    MovimientoInventario,
     Receta,
 )
 from app.servicios.confirmacion import registrar_ejecutor
-from app.servicios.inventario import stock_fisico, stock_disponible
+from app.servicios.inventario import stock_disponible
+from app.servicios.movimientos import registrar_movimiento
 
 
-def _deducir_inventario_pedido(db: Session, pedido: Pedido) -> list[str]:
+def _registrar_movimiento_agente(db: Session, args: dict, **campos):
+    usuario_id = args.get("_responsable_usuario_id")
+    clave_base = args.get("_idempotency_base")
+    if not usuario_id or not clave_base:
+        raise ValueError("El movimiento requiere una sesión confirmada del usuario.")
+    return registrar_movimiento(
+        db,
+        usuario_id=usuario_id,
+        idempotency_key=f"{clave_base}:{campos.pop('clave')}"[:120],
+        **campos,
+    )
+
+
+def _deducir_inventario_pedido(db: Session, pedido: Pedido, args: dict) -> list[str]:
     """Descuenta stock por cada línea del pedido que aún no esté descontada."""
     advertencias = []
     for item in pedido.items:
-        if item.inventario_descontado:
+        if not item.activo or item.inventario_descontado:
             continue
-        disponible_antes = stock_disponible(db, item.producto_id)
-        mov = MovimientoInventario(
+        resultado = _registrar_movimiento_agente(
+            db,
+            args,
+            clave=f"pedido:{pedido.id}:item:{item.id}:venta",
             producto_id=item.producto_id,
-            cantidad=-item.cantidad,
             tipo_movimiento="venta",
+            cantidad=item.cantidad,
             pedido_id=pedido.id,
             referencia=f"Venta pedido {pedido.id}",
         )
-        db.add(mov)
         item.inventario_descontado = True
-        disponible_despues = disponible_antes - item.cantidad
-        if disponible_despues < 0:
-            advertencias.append(
-                f"{item.producto.nombre}: quedará con disponible negativo ({disponible_despues})."
-            )
+        advertencias.extend(resultado.advertencias)
     return advertencias
 
 
@@ -83,19 +93,22 @@ async def ejecutar_editar_pedido(db: Session, args: dict) -> str:
 
     # Si ya se descontó inventario, lo revertimos antes de reemplazar líneas.
     for item in pedido.items:
+        if not item.activo:
+            continue
         if item.inventario_descontado:
-            db.add(
-                MovimientoInventario(
-                    producto_id=item.producto_id,
-                    cantidad=item.cantidad,
-                    tipo_movimiento="ajuste",
-                    pedido_id=pedido.id,
-                    referencia=f"Reversión por edición pedido {pedido.id}",
-                )
+            _registrar_movimiento_agente(
+                db,
+                args,
+                clave=f"pedido:{pedido.id}:item:{item.id}:reversion-edicion",
+                producto_id=item.producto_id,
+                tipo_movimiento="ajuste",
+                direccion="entrada",
+                cantidad=item.cantidad,
+                pedido_id=pedido.id,
+                referencia=f"Reversión por edición pedido {pedido.id}",
             )
             item.inventario_descontado = False
-
-    db.query(PedidoItem).filter(PedidoItem.pedido_id == pedido.id).delete()
+        item.activo = False
 
     for it in args["items"]:
         db.add(
@@ -121,15 +134,19 @@ async def ejecutar_cancelar_pedido(db: Session, args: dict) -> str:
         raise ValueError(f"El pedido ya está {pedido.estado}.")
 
     for item in pedido.items:
+        if not item.activo:
+            continue
         if item.inventario_descontado:
-            db.add(
-                MovimientoInventario(
-                    producto_id=item.producto_id,
-                    cantidad=item.cantidad,
-                    tipo_movimiento="ajuste",
-                    pedido_id=pedido.id,
-                    referencia=f"Reversión por cancelación pedido {pedido.id}",
-                )
+            _registrar_movimiento_agente(
+                db,
+                args,
+                clave=f"pedido:{pedido.id}:item:{item.id}:reversion-cancelacion",
+                producto_id=item.producto_id,
+                tipo_movimiento="ajuste",
+                direccion="entrada",
+                cantidad=item.cantidad,
+                pedido_id=pedido.id,
+                referencia=f"Reversión por cancelación pedido {pedido.id}",
             )
             item.inventario_descontado = False
 
@@ -140,22 +157,25 @@ async def ejecutar_cancelar_pedido(db: Session, args: dict) -> str:
 @registrar_ejecutor("registrar_entrada_mercancia")
 async def ejecutar_registrar_entrada_mercancia(db: Session, args: dict) -> str:
     producto = db.get(Producto, args["producto_id"])
-    mov = MovimientoInventario(
+    resultado = _registrar_movimiento_agente(
+        db,
+        args,
+        clave="entrada-mercancia",
         producto_id=producto.id,
         cantidad=args["cantidad"],
-        tipo_movimiento="entrada",
+        tipo_movimiento="reabastecimiento",
         empleado_id=args.get("empleado_recibe_id"),
         empleado_entrega_id=args.get("empleado_entrega_id"),
         referencia=args.get("referencia") or "Entrada de mercancía",
         observaciones=args.get("observaciones"),
     )
-    db.add(mov)
-
-    fisico = stock_fisico(db, producto.id) + args["cantidad"]
-    return (
+    resultado_texto = (
         f"Entrada registrada: {args['cantidad']} {producto.unidad_medida or 'piezas'} "
-        f"de {producto.nombre}. Stock físico ahora: {fisico}."
+        f"de {producto.nombre}. Stock físico ahora: {resultado.stock_despues}."
     )
+    if resultado.advertencias:
+        resultado_texto += "\n" + "\n".join(resultado.advertencias)
+    return resultado_texto
 
 
 @registrar_ejecutor("registrar_terminado")
@@ -168,28 +188,25 @@ async def ejecutar_registrar_terminado(db: Session, args: dict) -> str:
     for receta in recetas:
         total_componente = receta.cantidad_requerida * cantidad
         comp = db.get(Producto, receta.producto_componente_id)
-        disponible_antes = stock_disponible(db, comp.id)
-        db.add(
-            MovimientoInventario(
-                producto_id=comp.id,
-                cantidad=-total_componente,
-                tipo_movimiento="salida",
-                referencia=f"Producción {cantidad} x {producto.nombre}",
-            )
+        resultado = _registrar_movimiento_agente(
+            db,
+            args,
+            clave=f"produccion:componente:{receta.id}",
+            producto_id=comp.id,
+            cantidad=total_componente,
+            tipo_movimiento="produccion_salida",
+            referencia=f"Producción {cantidad} x {producto.nombre}",
         )
-        disponible_despues = disponible_antes - total_componente
-        if disponible_despues < 0:
-            advertencias.append(
-                f"{comp.nombre}: quedará con disponible negativo ({disponible_despues})."
-            )
+        advertencias.extend(resultado.advertencias)
 
-    db.add(
-        MovimientoInventario(
-            producto_id=producto.id,
-            cantidad=cantidad,
-            tipo_movimiento="entrada",
-            referencia=f"Producción terminada",
-        )
+    _registrar_movimiento_agente(
+        db,
+        args,
+        clave="produccion:producto-terminado",
+        producto_id=producto.id,
+        cantidad=cantidad,
+        tipo_movimiento="produccion_entrada",
+        referencia="Producción terminada",
     )
 
     lineas = [f"Producción registrada: {cantidad} {producto.unidad_medida or 'piezas'} de {producto.nombre}."]
@@ -207,7 +224,7 @@ async def ejecutar_registrar_envio(db: Session, args: dict) -> str:
     pedido.paqueteria = args["paqueteria"]
     pedido.guia = args["guia"]
 
-    advertencias = _deducir_inventario_pedido(db, pedido)
+    advertencias = _deducir_inventario_pedido(db, pedido, args)
     lineas = [
         f"Pedido {pedido.id} marcado como enviado.",
         f"Paquetería: {args['paqueteria']}, guía: {args['guia']}.",
@@ -225,7 +242,7 @@ async def ejecutar_marcar_entregado(db: Session, args: dict) -> str:
     if not pedido.tipo_entrega:
         pedido.tipo_entrega = "directa"
 
-    advertencias = _deducir_inventario_pedido(db, pedido)
+    advertencias = _deducir_inventario_pedido(db, pedido, args)
     lineas = [f"Pedido {pedido.id} marcado como entregado (entrega {pedido.tipo_entrega})."]
     if advertencias:
         lineas.append("Advertencias:")

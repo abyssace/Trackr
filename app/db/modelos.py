@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -20,8 +20,12 @@ class Usuario(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     activo: Mapped[bool] = mapped_column(default=True)
     es_admin: Mapped[bool] = mapped_column(default=False)
-    rol: Mapped[str] = mapped_column(String(30), default=Rol.SOLO_LECTURA.value)
-    intentos_fallidos: Mapped[int] = mapped_column(default=0)
+    rol: Mapped[str] = mapped_column(
+        String(30),
+        default=Rol.SOLO_LECTURA.value,
+        server_default=text("'solo_lectura'"),
+    )
+    intentos_fallidos: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     bloqueado_hasta: Mapped[Optional[datetime]] = mapped_column(default=None)
 
 

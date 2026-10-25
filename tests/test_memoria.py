@@ -1,5 +1,7 @@
 import pytest
 
+from app.servicios.roles import Rol
+
 
 @pytest.fixture(autouse=True)
 def mock_run_agent(monkeypatch):
@@ -9,7 +11,10 @@ def mock_run_agent(monkeypatch):
     monkeypatch.setattr("app.api.chat.run_agent", fake_run_agent)
 
 
-def test_historial_isolated_between_users(logged_client, otro_usuario, db):
+def test_historial_isolated_between_users(logged_client, usuario, otro_usuario, db):
+    usuario.rol = Rol.VENDEDOR.value
+    otro_usuario.rol = Rol.VENDEDOR.value
+    db.commit()
     # User A sends a message
     r = logged_client.post("/api/chat", json={"mensaje": "hola soy A"})
     assert r.status_code == 200
@@ -32,7 +37,9 @@ def test_historial_isolated_between_users(logged_client, otro_usuario, db):
     app.dependency_overrides.clear()
 
 
-def test_historial_includes_user_and_assistant(logged_client):
+def test_historial_includes_user_and_assistant(logged_client, usuario, db):
+    usuario.rol = Rol.VENDEDOR.value
+    db.commit()
     r = logged_client.post("/api/chat", json={"mensaje": "mensaje de prueba"})
     assert r.status_code == 200
 

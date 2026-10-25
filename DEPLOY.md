@@ -68,9 +68,9 @@ uv run alembic upgrade head
 ```
 
 En una base existente, detén la aplicación y verifica el backup antes de ejecutar
-el comando. Las migraciones de catálogo, movimientos y campos de roles/auditoría
-son aditivas y usan modo batch de SQLite para conservar productos y movimientos
-existentes. No se ejecutan desde `app.main` ni desde el seed. Los downgrades están bloqueados para evitar
+el comando. Las migraciones de catálogo, movimientos, roles/auditoría,
+contraseña inicial y auditoría por trigger de precios son aditivas y usan modo batch de SQLite para conservar
+los registros existentes. No se ejecutan desde `app.main` ni desde el seed. Los downgrades están bloqueados para evitar
 eliminar códigos, precios, relaciones o responsables; para volver atrás, restaura
 un backup revisado.
 

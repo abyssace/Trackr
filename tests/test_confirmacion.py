@@ -71,6 +71,9 @@ def test_crear_pendiente_reemplaza_anterior(db, usuario):
 
 @pytest.mark.anyio
 async def test_confirmar_ejecuta_accion(db, usuario):
+    usuario.rol = "almacen"
+    usuario.es_admin = False
+    db.commit()
     producto = Producto(nombre="Tornillos", tipo="componente", unidad_medida="pieza")
     db.add(producto)
     db.commit()

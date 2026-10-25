@@ -29,8 +29,9 @@ def _login(client, user):
     assert response.status_code == 200
 
 
-def test_administrador_crea_y_edita_categoria_y_proveedor(client, db, usuario):
-    _login(client, usuario)
+def test_almacen_crea_y_edita_categoria_y_proveedor(client, db):
+    user = _crear_usuario(db, Rol.ALMACEN.value)
+    _login(client, user)
     category_response = client.post(
         "/api/inventario/categorias",
         json={"nombre": "Refacciones", "descripcion": "Piezas de reemplazo"},
@@ -70,7 +71,7 @@ def test_roles_sin_edicion_no_pueden_crear_catalogos(client, db, rol):
     assert client.post("/api/inventario/proveedores", json={"nombre": "Bloqueado"}).status_code == 403
 
 
-def test_almacen_puede_crear_catalogos_pero_no_desactivarlos(client, db):
+def test_almacen_puede_crear_y_desactivar_catalogos_sin_referencias(client, db):
     user = _crear_usuario(db, Rol.ALMACEN.value)
     _login(client, user)
     category = client.post("/api/inventario/categorias", json={"nombre": "Almacén"})
@@ -80,16 +81,17 @@ def test_almacen_puede_crear_catalogos_pero_no_desactivarlos(client, db):
 
     category_id = category.json()["categoria"]["id"]
     supplier_id = supplier.json()["proveedor"]["id"]
-    assert client.post(f"/api/inventario/categorias/{category_id}/desactivar").status_code == 403
-    assert client.post(f"/api/inventario/proveedores/{supplier_id}/desactivar").status_code == 403
+    assert client.post(f"/api/inventario/categorias/{category_id}/desactivar").status_code == 200
+    assert client.post(f"/api/inventario/proveedores/{supplier_id}/desactivar").status_code == 200
 
 
-def test_admin_desactiva_sin_borrar_categoria_ni_proveedor(client, db, usuario):
+def test_almacen_desactiva_catalogos_sin_borrar(client, db):
     category = Categoria(nombre="Categoría para archivar")
     supplier = Proveedor(nombre="Proveedor para archivar")
     db.add_all([category, supplier])
     db.commit()
-    _login(client, usuario)
+    user = _crear_usuario(db, Rol.ALMACEN.value)
+    _login(client, user)
 
     category_response = client.post(f"/api/inventario/categorias/{category.id}/desactivar")
     supplier_response = client.post(f"/api/inventario/proveedores/{supplier.id}/desactivar")
@@ -121,7 +123,8 @@ def test_nombre_catalogo_unico_sin_importar_acentos_o_mayusculas(
 ):
     db.add(model(nombre=name))
     db.commit()
-    _login(client, usuario)
+    warehouse = _crear_usuario(db, Rol.ALMACEN.value)
+    _login(client, warehouse)
 
     response = client.post(
         f"/api/inventario/{path}",
@@ -130,7 +133,7 @@ def test_nombre_catalogo_unico_sin_importar_acentos_o_mayusculas(
     assert response.status_code == 409
 
 
-def test_no_se_desactiva_categoria_en_uso_por_producto_activo(client, db, usuario):
+def test_no_se_desactiva_categoria_en_uso_por_producto_activo(client, db):
     category = Categoria(nombre="Categoría asignada")
     db.add(category)
     db.flush()
@@ -142,7 +145,8 @@ def test_no_se_desactiva_categoria_en_uso_por_producto_activo(client, db, usuari
     )
     db.add(product)
     db.commit()
-    _login(client, usuario)
+    warehouse = _crear_usuario(db, Rol.ALMACEN.value)
+    _login(client, warehouse)
 
     response = client.post(f"/api/inventario/categorias/{category.id}/desactivar")
     assert response.status_code == 409

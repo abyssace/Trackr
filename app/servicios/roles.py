@@ -44,7 +44,10 @@ PERMISOS_POR_ROL: dict[str, set[str]] = {
         "actualizar_stock_minimo",
     },
     Rol.ENSAMBLADOR.value: set(_HERRAMIENTAS_LECTURA) | {"registrar_terminado"},
-    Rol.ADMINISTRADOR.value: set(TODAS_LAS_HERRAMIENTAS),
+    # El administrador de Trackr administra cuentas y permisos, no operaciones
+    # de negocio por chat. Sus excepciones (desactivar producto y backup) son
+    # endpoints explícitos, fuera del agente.
+    Rol.ADMINISTRADOR.value: set(),
 }
 
 
@@ -66,11 +69,11 @@ def roles_validos() -> list[str]:
 
 
 def puede_editar_productos(rol: str | None) -> bool:
-    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}
+    return rol == Rol.ALMACEN.value
 
 
 def puede_registrar_movimientos(rol: str | None) -> bool:
-    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}
+    return rol == Rol.ALMACEN.value
 
 
 def puede_desactivar_productos(rol: str | None) -> bool:
@@ -85,5 +88,67 @@ def puede_ver_precio_venta(rol: str | None) -> bool:
     return rol in {Rol.ADMINISTRADOR.value, Rol.VENDEDOR.value}
 
 
+def puede_editar_precio_compra(rol: str | None) -> bool:
+    return rol == Rol.ADMINISTRADOR.value
+
+
+def puede_editar_precio_venta(rol: str | None) -> bool:
+    return rol in {Rol.ADMINISTRADOR.value, Rol.VENDEDOR.value}
+
+
 def puede_ver_historial_inventario(rol: str | None) -> bool:
-    return rol in {Rol.ADMINISTRADOR.value, Rol.ALMACEN.value}
+    return rol == Rol.ALMACEN.value
+
+
+def puede_ver_catalogo_inventario(rol: str | None) -> bool:
+    return rol in {
+        Rol.SOLO_LECTURA.value,
+        Rol.VENDEDOR.value,
+        Rol.ALMACEN.value,
+        Rol.ENSAMBLADOR.value,
+    }
+
+
+def puede_gestionar_personal(rol: str | None) -> bool:
+    return rol == Rol.ADMINISTRADOR.value
+
+
+def puede_desactivar_catalogos(rol: str | None) -> bool:
+    return rol == Rol.ALMACEN.value
+
+
+def permisos_descriptivos(rol: str | None) -> list[str]:
+    """Labels para que administración pueda revisar permisos sin exponer internals."""
+    permisos = {
+        Rol.ADMINISTRADOR.value: [
+            "Agregar cuentas de personal y asignarles un rol",
+            "Consultar los permisos de cada rol",
+            "Ver y editar precios de compra y venta",
+            "Consultar la auditoría de cambios de precios",
+            "Desactivar productos",
+            "Descargar el respaldo de la base de datos",
+        ],
+        Rol.ALMACEN.value: [
+            "Ver productos activos y sus existencias",
+            "Crear, editar y desactivar categorías y proveedores",
+            "Crear y editar productos",
+            "Registrar entradas y salidas de inventario",
+            "Consultar el historial de movimientos",
+            "Cambiar mínimos de stock",
+        ],
+        Rol.VENDEDOR.value: [
+            "Ver productos activos y cambiar precios de venta",
+            "Crear, editar y cancelar pedidos",
+            "Marcar pedidos como entregados",
+            "Consultar pedidos y existencias",
+        ],
+        Rol.ENSAMBLADOR.value: [
+            "Ver productos activos y existencias",
+            "Registrar productos terminados",
+            "Consultar recordatorios y pedidos",
+        ],
+        Rol.SOLO_LECTURA.value: [
+            "Consultar productos, existencias, pedidos y recordatorios",
+        ],
+    }
+    return list(permisos.get(rol, []))

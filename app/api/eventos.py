@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.base import get_db
 from app.db.modelos import Usuario, Recordatorio
+from app.servicios.roles import Rol
 from app.servicios.event_queue import get_or_create_queue, drop_queue
 
 router = APIRouter(prefix="/api")
@@ -71,6 +72,8 @@ async def eventos(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
+    if usuario.rol == Rol.ADMINISTRADOR.value:
+        raise HTTPException(status_code=403, detail="La cuenta de administración no tiene canal de chat.")
     return StreamingResponse(
         event_stream(usuario, db),
         media_type="text/event-stream",

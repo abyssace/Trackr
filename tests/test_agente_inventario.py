@@ -35,7 +35,8 @@ def _usuario(db, rol, nombre="Usuario"):
     return user
 
 
-def test_tool_cuenta_productos_activos_y_excluye_inactivos(db, usuario):
+def test_tool_cuenta_productos_activos_y_excluye_inactivos(db):
+    usuario = _usuario(db, Rol.SOLO_LECTURA.value, "Solo lectura")
     db.add_all(
         [
             Producto(nombre="Activo 1", tipo="componente", activo=True),
@@ -51,7 +52,8 @@ def test_tool_cuenta_productos_activos_y_excluye_inactivos(db, usuario):
     assert respuesta == "Hay 2 productos activos."
 
 
-def test_tool_de_minimo_crea_pendiente_y_aplica_solo_al_confirmar(db, usuario):
+def test_tool_de_minimo_crea_pendiente_y_aplica_solo_al_confirmar(db):
+    usuario = _usuario(db, Rol.ALMACEN.value, "Almacén")
     producto = Producto(
         nombre="Destornillador allen",
         tipo="componente",
@@ -89,7 +91,7 @@ def await_confirmar(db, pendiente, usuario):
 @pytest.mark.parametrize(
     "rol,permitido",
     [
-        (Rol.ADMINISTRADOR.value, True),
+        (Rol.ADMINISTRADOR.value, False),
         (Rol.ALMACEN.value, True),
         (Rol.VENDEDOR.value, False),
         (Rol.ENSAMBLADOR.value, False),

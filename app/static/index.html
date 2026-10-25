@@ -113,11 +113,87 @@
     <p id="loginError" style="color: #c00;"></p>
   </div>
 
+  <section id="passwordChangeBox" class="box hidden" aria-labelledby="passwordChangeTitle">
+    <h2 id="passwordChangeTitle">Cambia tu contraseña temporal</h2>
+    <p>Antes de continuar, elige una contraseña nueva de al menos 12 caracteres.</p>
+    <form id="passwordChangeForm">
+      <label for="currentPassword">Contraseña temporal</label>
+      <input id="currentPassword" type="password" autocomplete="current-password" required />
+      <label for="newPassword">Contraseña nueva</label>
+      <input id="newPassword" type="password" minlength="12" autocomplete="new-password" required />
+      <label for="confirmNewPassword">Repite la contraseña nueva</label>
+      <input id="confirmNewPassword" type="password" minlength="12" autocomplete="new-password" required />
+      <button id="changePasswordBtn" type="submit">Guardar contraseña nueva</button>
+      <p id="passwordChangeMessage" role="status"></p>
+    </form>
+    <button id="passwordChangeLogoutBtn" type="button">Cerrar sesión</button>
+  </section>
+
   <nav id="appNav" class="app-nav hidden" aria-label="Secciones de Trackr">
     <button id="showChatBtn" type="button" aria-current="page">Chat</button>
     <button id="showInventoryBtn" type="button">Inventario</button>
+    <button id="showPersonnelBtn" type="button" class="hidden">Personal y permisos</button>
     <button id="logoutBtn" type="button">Cerrar sesión</button>
   </nav>
+
+  <main id="personnelBox" class="hidden">
+    <section class="box" aria-labelledby="personnelTitle">
+      <h2 id="personnelTitle">Personal y permisos</h2>
+      <p>Las cuentas nuevas recibirán una contraseña temporal y deberán cambiarla al entrar por primera vez.</p>
+      <form id="personnelForm" class="box">
+        <h3>Agregar personal</h3>
+        <label for="staffName">Nombre</label>
+        <input id="staffName" type="text" maxlength="200" required />
+        <label for="staffUsername">Usuario para iniciar sesión</label>
+        <input id="staffUsername" type="text" maxlength="100" autocomplete="off" required />
+        <label for="staffRole">Rol</label>
+        <select id="staffRole" required>
+          <option value="vendedor">Vendedor</option>
+          <option value="almacen">Almacén</option>
+          <option value="ensamblador">Ensamblador</option>
+          <option value="solo_lectura">Solo lectura</option>
+          <option value="administrador">Administrador</option>
+        </select>
+        <label for="staffTemporaryPassword">Contraseña temporal (mínimo 12 caracteres)</label>
+        <input id="staffTemporaryPassword" type="password" minlength="12" autocomplete="new-password" required />
+        <button id="createStaffBtn" type="submit">Crear cuenta</button>
+        <p id="staffFormMessage" role="status"></p>
+      </form>
+
+      <h3>Personal registrado y permisos</h3>
+      <p id="staffListMessage" class="status-message" role="status"></p>
+      <div id="staffList" class="product-list" aria-live="polite"></div>
+
+      <section class="box" aria-labelledby="adminPriceTitle">
+        <h3 id="adminPriceTitle">Precios de productos</h3>
+        <form id="adminPriceForm">
+          <label for="adminPriceProduct">Producto</label>
+          <select id="adminPriceProduct" required></select>
+          <label for="adminPurchasePrice">Precio de compra (MXN)</label>
+          <input id="adminPurchasePrice" type="number" min="0" step="0.01" />
+          <label for="adminSalePrice">Precio de venta (MXN)</label>
+          <input id="adminSalePrice" type="number" min="0" step="0.01" />
+          <p class="muted">Deja vacío un precio que no quieras cambiar.</p>
+          <button id="saveAdminPricesBtn" type="submit">Guardar precios</button>
+          <p id="adminPriceMessage" role="status"></p>
+        </form>
+        <h4>Quién cambió cada precio</h4>
+        <p id="adminPriceHistoryMessage" class="status-message" role="status"></p>
+        <div id="adminPriceHistory" class="product-list" aria-live="polite"></div>
+      </section>
+
+      <section class="box" aria-labelledby="adminExceptionsTitle">
+        <h3 id="adminExceptionsTitle">Excepciones de administración</h3>
+        <form id="adminDeactivateProductForm">
+          <label for="adminProductToDeactivate">Desactivar producto</label>
+          <select id="adminProductToDeactivate" required></select>
+          <button id="adminDeactivateProductBtn" type="submit">Desactivar producto</button>
+          <p id="adminProductMessage" role="status"></p>
+        </form>
+        <a href="/api/admin/backup">Descargar respaldo de la base de datos</a>
+      </section>
+    </section>
+  </main>
 
   <div id="chatBox" class="box hidden">
     <h3>Chat</h3>
@@ -316,6 +392,24 @@
     const confirmBtn = document.getElementById('confirmBtn');
     const cancelBtn = document.getElementById('cancelBtn');
     const appNav = document.getElementById('appNav');
+    const passwordChangeBox = document.getElementById('passwordChangeBox');
+    const passwordChangeForm = document.getElementById('passwordChangeForm');
+    const passwordChangeMessage = document.getElementById('passwordChangeMessage');
+    const personnelBox = document.getElementById('personnelBox');
+    const personnelForm = document.getElementById('personnelForm');
+    const staffList = document.getElementById('staffList');
+    const staffListMessage = document.getElementById('staffListMessage');
+    const staffFormMessage = document.getElementById('staffFormMessage');
+    const showPersonnelBtn = document.getElementById('showPersonnelBtn');
+    const adminProductToDeactivate = document.getElementById('adminProductToDeactivate');
+    const adminProductMessage = document.getElementById('adminProductMessage');
+    const adminPriceForm = document.getElementById('adminPriceForm');
+    const adminPriceProduct = document.getElementById('adminPriceProduct');
+    const adminPurchasePrice = document.getElementById('adminPurchasePrice');
+    const adminSalePrice = document.getElementById('adminSalePrice');
+    const adminPriceMessage = document.getElementById('adminPriceMessage');
+    const adminPriceHistoryMessage = document.getElementById('adminPriceHistoryMessage');
+    const adminPriceHistory = document.getElementById('adminPriceHistory');
     const inventoryBox = document.getElementById('inventoryBox');
     const inventoryKpis = document.getElementById('inventoryKpis');
     const categoryChart = document.getElementById('categoryChart');
@@ -360,6 +454,7 @@
     let barcodeDetector = null;
     let scanningBarcode = false;
     let movementAttempt = null;
+    let adminPriceProducts = [];
 
     function addMessage(text, role) {
       const div = document.createElement('div');
@@ -375,7 +470,7 @@
         if (res.ok) {
           const user = await res.json();
           currentRole = user.rol;
-          await showChat();
+          await showAfterLogin(user);
         }
       } catch (e) {
         console.error(e);
@@ -395,9 +490,15 @@
     }
 
     async function showChat() {
+      if (currentRole === 'administrador') return showPersonnel();
       cerrarCamaraCodigo();
       loginBox.classList.add('hidden');
+      passwordChangeBox.classList.add('hidden');
+      personnelBox.classList.add('hidden');
       appNav.classList.remove('hidden');
+      document.getElementById('showChatBtn').classList.remove('hidden');
+      document.getElementById('showInventoryBtn').classList.remove('hidden');
+      showPersonnelBtn.classList.add('hidden');
       chatBox.classList.remove('hidden');
       inventoryBox.classList.add('hidden');
       document.getElementById('showChatBtn').setAttribute('aria-current', 'page');
@@ -407,8 +508,14 @@
     }
 
     async function showInventory() {
+      if (currentRole === 'administrador') return showPersonnel();
       loginBox.classList.add('hidden');
+      passwordChangeBox.classList.add('hidden');
+      personnelBox.classList.add('hidden');
       appNav.classList.remove('hidden');
+      document.getElementById('showChatBtn').classList.remove('hidden');
+      document.getElementById('showInventoryBtn').classList.remove('hidden');
+      showPersonnelBtn.classList.add('hidden');
       chatBox.classList.add('hidden');
       inventoryBox.classList.remove('hidden');
       document.getElementById('showInventoryBtn').setAttribute('aria-current', 'page');
@@ -424,6 +531,44 @@
 
     document.getElementById('showChatBtn').addEventListener('click', showChat);
     document.getElementById('showInventoryBtn').addEventListener('click', showInventory);
+    showPersonnelBtn.addEventListener('click', showPersonnel);
+
+    async function showAfterLogin(user) {
+      currentRole = user.rol;
+      if (user.debe_cambiar_password) return showPasswordChange();
+      if (currentRole === 'administrador') return showPersonnel();
+      return showChat();
+    }
+
+    function showPasswordChange() {
+      cerrarCamaraCodigo();
+      loginBox.classList.add('hidden');
+      chatBox.classList.add('hidden');
+      inventoryBox.classList.add('hidden');
+      personnelBox.classList.add('hidden');
+      appNav.classList.add('hidden');
+      passwordChangeBox.classList.remove('hidden');
+      passwordChangeMessage.textContent = '';
+    }
+
+    async function showPersonnel() {
+      if (currentRole !== 'administrador') return showChat();
+      cerrarCamaraCodigo();
+      loginBox.classList.add('hidden');
+      passwordChangeBox.classList.add('hidden');
+      chatBox.classList.add('hidden');
+      inventoryBox.classList.add('hidden');
+      personnelBox.classList.remove('hidden');
+      appNav.classList.remove('hidden');
+      document.getElementById('showChatBtn').classList.add('hidden');
+      document.getElementById('showInventoryBtn').classList.add('hidden');
+      showPersonnelBtn.classList.remove('hidden');
+      showPersonnelBtn.setAttribute('aria-current', 'page');
+      if (eventSource) eventSource.close();
+      await cargarPersonal();
+      await cargarProductosDesactivables();
+      await cargarPreciosAdmin();
+    }
 
     function connectEvents() {
       if (eventSource) eventSource.close();
@@ -445,10 +590,273 @@
       cerrarCamaraCodigo();
       chatBox.classList.add('hidden');
       inventoryBox.classList.add('hidden');
+      personnelBox.classList.add('hidden');
+      passwordChangeBox.classList.add('hidden');
       appNav.classList.add('hidden');
       loginBox.classList.remove('hidden');
+      currentRole = null;
       if (eventSource) eventSource.close();
     }
+
+    async function cargarPersonal() {
+      staffList.replaceChildren();
+      staffListMessage.textContent = 'Cargando personal…';
+      try {
+        const response = await fetch('/api/admin/personal', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo cargar el personal.');
+        const usuarios = data.usuarios || [];
+        staffListMessage.textContent = usuarios.length
+          ? `${usuarios.length} cuenta(s) registrada(s).`
+          : 'Todavía no hay cuentas de personal.';
+        usuarios.forEach(user => {
+          const card = document.createElement('article');
+          card.className = 'product-card';
+          const heading = document.createElement('h4');
+          heading.textContent = `${user.nombre} · ${user.username}`;
+          const role = document.createElement('p');
+          role.textContent = `Rol: ${user.rol}${user.activo ? '' : ' · cuenta inactiva'}`;
+          card.append(heading, role);
+          if (user.debe_cambiar_password) {
+            const firstLogin = document.createElement('p');
+            firstLogin.className = 'warning';
+            firstLogin.textContent = 'Debe cambiar su contraseña temporal al entrar.';
+            card.appendChild(firstLogin);
+          }
+          const permissionTitle = document.createElement('strong');
+          permissionTitle.textContent = 'Permisos:';
+          const list = document.createElement('ul');
+          (user.permisos || []).forEach(permission => {
+            const item = document.createElement('li'); item.textContent = permission; list.appendChild(item);
+          });
+          card.append(permissionTitle, list);
+          staffList.appendChild(card);
+        });
+      } catch (error) {
+        staffListMessage.textContent = error.message || 'Ocurrió un error al cargar el personal.';
+      }
+    }
+
+    personnelForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('createStaffBtn');
+      button.disabled = true;
+      staffFormMessage.textContent = 'Creando cuenta…';
+      const payload = {
+        nombre: document.getElementById('staffName').value.trim(),
+        username: document.getElementById('staffUsername').value.trim(),
+        rol: document.getElementById('staffRole').value,
+        password_temporal: document.getElementById('staffTemporaryPassword').value,
+      };
+      try {
+        const response = await fetch('/api/admin/personal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo crear la cuenta.');
+        personnelForm.reset();
+        staffFormMessage.textContent = `Cuenta creada para ${data.usuario.nombre}. Deberá cambiar la contraseña temporal al iniciar sesión.`;
+        await cargarPersonal();
+      } catch (error) {
+        staffFormMessage.textContent = error.message || 'Ocurrió un error al crear la cuenta.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function cargarProductosDesactivables() {
+      const select = adminProductToDeactivate;
+      select.replaceChildren();
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Cargando productos…';
+      select.appendChild(placeholder);
+      try {
+        const response = await fetch('/api/admin/productos-desactivables', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudieron cargar los productos.');
+        rellenarSelect(
+          select,
+          (data.productos || []).map(product => ({
+            id: product.id,
+            nombre: product.codigo ? `${product.nombre} · ${product.codigo}` : product.nombre,
+          })),
+          'Elige un producto',
+        );
+        if (!(data.productos || []).length) adminProductMessage.textContent = 'No hay productos activos para desactivar.';
+      } catch (error) {
+        adminProductMessage.textContent = error.message;
+      }
+    }
+
+    document.getElementById('adminDeactivateProductForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const productId = adminProductToDeactivate.value;
+      if (!productId) return;
+      const productName = adminProductToDeactivate.selectedOptions[0].textContent;
+      if (!window.confirm(`¿Desactivar “${productName}”? Se conservará su historial.`)) return;
+      const button = document.getElementById('adminDeactivateProductBtn');
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/admin/productos/${productId}/desactivar`, {
+          method: 'POST', credentials: 'same-origin',
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo desactivar el producto.');
+        adminProductMessage.textContent = 'Producto desactivado. Su historial se conservó.';
+        await cargarProductosDesactivables();
+      } catch (error) {
+        adminProductMessage.textContent = error.message || 'Ocurrió un error al desactivar.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function cargarPreciosAdmin() {
+      adminPriceMessage.textContent = 'Cargando precios…';
+      adminPriceHistory.replaceChildren();
+      try {
+        const response = await fetch('/api/admin/precios', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudieron cargar los precios.');
+        adminPriceProducts = data.productos || [];
+        rellenarSelect(
+          adminPriceProduct,
+          adminPriceProducts.map(product => ({
+            id: product.id,
+            nombre: `${product.nombre}${product.codigo ? ` · ${product.codigo}` : ''}${product.activo ? '' : ' · inactivo'}`,
+          })),
+          'Elige un producto',
+        );
+        adminPriceMessage.textContent = adminPriceProducts.length
+          ? 'Puedes cambiar compra y venta. Los cambios guardan responsable y fecha.'
+          : 'No hay productos para mostrar.';
+        mostrarPreciosSeleccionados();
+        await cargarAuditoriaPrecios();
+      } catch (error) {
+        adminPriceMessage.textContent = error.message || 'Ocurrió un error al cargar precios.';
+      }
+    }
+
+    function mostrarPreciosSeleccionados() {
+      const product = adminPriceProducts.find(item => String(item.id) === adminPriceProduct.value);
+      adminPurchasePrice.value = product?.precio_compra ?? '';
+      adminSalePrice.value = product?.precio_venta ?? '';
+    }
+
+    adminPriceProduct.addEventListener('change', () => {
+      mostrarPreciosSeleccionados();
+      cargarAuditoriaPrecios();
+    });
+
+    adminPriceForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const productId = adminPriceProduct.value;
+      if (!productId) return;
+      const payload = {};
+      if (adminPurchasePrice.value !== '') payload.precio_compra = Number(adminPurchasePrice.value);
+      if (adminSalePrice.value !== '') payload.precio_venta = Number(adminSalePrice.value);
+      if (!Object.keys(payload).length) {
+        adminPriceMessage.textContent = 'Escribe al menos un precio para guardar.';
+        return;
+      }
+      const button = document.getElementById('saveAdminPricesBtn');
+      button.disabled = true;
+      adminPriceMessage.textContent = 'Guardando precios…';
+      try {
+        const response = await fetch(`/api/admin/precios/${productId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudieron guardar los precios.');
+        adminPriceMessage.textContent = 'Precios actualizados y cambio registrado.';
+        await cargarPreciosAdmin();
+      } catch (error) {
+        adminPriceMessage.textContent = error.message || 'Ocurrió un error al guardar los precios.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function cargarAuditoriaPrecios() {
+      adminPriceHistory.replaceChildren();
+      adminPriceHistoryMessage.textContent = 'Cargando historial de precios…';
+      try {
+        const url = new URL('/api/admin/auditoria-precios', window.location.origin);
+        if (adminPriceProduct.value) url.searchParams.set('producto_id', adminPriceProduct.value);
+        const response = await fetch(url, { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo cargar la auditoría.');
+        const cambios = data.cambios || [];
+        if (!cambios.length) {
+          adminPriceHistoryMessage.textContent = 'Todavía no hay cambios de precio registrados.';
+          return;
+        }
+        adminPriceHistoryMessage.textContent = `${cambios.length} cambio(s) recientes.`;
+        cambios.forEach(change => {
+          const card = document.createElement('article'); card.className = 'product-card';
+          const title = document.createElement('h5'); title.textContent = change.producto;
+          const field = change.campo === 'precio_compra' ? 'Precio de compra' : 'Precio de venta';
+          const oldValue = change.valor_anterior === null ? 'pendiente' : monedaMx(change.valor_anterior);
+          const newValue = change.valor_nuevo === null ? 'pendiente' : monedaMx(change.valor_nuevo);
+          const detail = document.createElement('p'); detail.textContent = `${field}: ${oldValue} → ${newValue}`;
+          const actor = document.createElement('p'); actor.className = 'muted';
+          actor.textContent = `${change.usuario} · ${new Date(change.cambiado_en).toLocaleString('es-MX')}`;
+          card.append(title, detail, actor);
+          adminPriceHistory.appendChild(card);
+        });
+      } catch (error) {
+        adminPriceHistoryMessage.textContent = error.message || 'Ocurrió un error al cargar la auditoría.';
+      }
+    }
+
+    passwordChangeForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const current = document.getElementById('currentPassword').value;
+      const next = document.getElementById('newPassword').value;
+      const confirm = document.getElementById('confirmNewPassword').value;
+      if (next !== confirm) {
+        passwordChangeMessage.textContent = 'Las contraseñas nuevas no coinciden.';
+        return;
+      }
+      const button = document.getElementById('changePasswordBtn');
+      button.disabled = true;
+      passwordChangeMessage.textContent = 'Actualizando contraseña…';
+      try {
+        const response = await fetch('/api/cambiar-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            password_actual: current,
+            password_nueva: next,
+            confirmar_password: confirm,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo cambiar la contraseña.');
+        passwordChangeForm.reset();
+        const me = await fetch('/api/me', { credentials: 'same-origin' });
+        const user = await me.json();
+        passwordChangeMessage.textContent = 'Contraseña actualizada.';
+        await showAfterLogin(user);
+      } catch (error) {
+        passwordChangeMessage.textContent = error.message || 'Ocurrió un error al cambiar la contraseña.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById('passwordChangeLogoutBtn').addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+      showLogin();
+    });
 
     function monedaMx(valor) {
       return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
@@ -584,6 +992,12 @@
             actions.appendChild(deactivateButton);
           }
           card.appendChild(actions);
+        } else if (currentRole === 'vendedor' && product.activo) {
+          const editSalePrice = document.createElement('button');
+          editSalePrice.type = 'button';
+          editSalePrice.textContent = 'Cambiar precio de venta';
+          editSalePrice.addEventListener('click', () => editarPrecioVenta(product));
+          card.appendChild(editSalePrice);
         }
         productList.appendChild(card);
       });
@@ -979,6 +1393,37 @@
       }
     }
 
+    async function editarPrecioVenta(product) {
+      const valor = window.prompt(
+        `Nuevo precio de venta para ${product.nombre} (MXN):`,
+        product.precio_venta ?? '',
+      );
+      if (valor === null) return;
+      const normalizado = valor.trim().replace(',', '.');
+      if (!/^\d+(\.\d{1,2})?$/.test(normalizado)) {
+        inventoryMessage.textContent = 'Escribe un precio válido con máximo dos decimales.';
+        inventoryMessage.classList.remove('hidden');
+        return;
+      }
+      try {
+        const response = await fetch(`/api/inventario/productos/${product.id}/precio-venta`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ precio_venta: Number(normalizado) }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo actualizar el precio.');
+        await loadInventorySummary();
+        await loadProducts(productSearch.value);
+        inventoryMessage.textContent = `Precio de venta actualizado a ${monedaMx(data.precio_venta)}.`;
+        inventoryMessage.classList.remove('hidden');
+      } catch (error) {
+        inventoryMessage.textContent = error.message || 'Ocurrió un error al actualizar el precio.';
+        inventoryMessage.classList.remove('hidden');
+      }
+    }
+
     movementType.addEventListener('change', () => {
       adjustmentDirectionBox.classList.toggle('hidden', movementType.value !== 'ajuste');
     });
@@ -1160,7 +1605,7 @@
       if (res.ok) {
         const data = await res.json();
         currentRole = data.usuario.rol;
-        showChat();
+        await showAfterLogin(data.usuario);
       } else {
         loginError.textContent = 'Credenciales inválidas';
       }

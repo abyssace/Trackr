@@ -27,6 +27,14 @@ class Usuario(Base):
     )
     intentos_fallidos: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     bloqueado_hasta: Mapped[Optional[datetime]] = mapped_column(default=None)
+    debe_cambiar_password: Mapped[bool] = mapped_column(
+        default=False,
+        server_default=text("0"),
+    )
+    debe_cambiar_password: Mapped[bool] = mapped_column(
+        default=False,
+        server_default=text("0"),
+    )
 
 
 class Recordatorio(Base):

@@ -35,9 +35,16 @@ def _login(client):
     assert response.status_code == 200
 
 
+def _login_almacen(client, db, usuario):
+    usuario.rol = Rol.ALMACEN.value
+    usuario.es_admin = False
+    db.commit()
+    _login(client)
+
+
 def test_salida_mayor_al_stock_fisico_se_rechaza_sin_movimiento(client, db, usuario):
     producto = _producto_con_stock(db, cantidad=2)
-    _login(client)
+    _login_almacen(client, db, usuario)
     antes = db.query(MovimientoInventario).count()
 
     response = client.post(
@@ -59,7 +66,7 @@ def test_salida_mayor_al_stock_fisico_se_rechaza_sin_movimiento(client, db, usua
 @pytest.mark.parametrize("cantidad", [0, -1, 1.5, True])
 def test_movimiento_rechaza_cantidad_no_entera_positiva(client, db, usuario, cantidad):
     producto = _producto_con_stock(db)
-    _login(client)
+    _login_almacen(client, db, usuario)
     response = client.post(
         "/api/inventario/movimientos",
         json={
@@ -83,7 +90,7 @@ def test_salida_puede_usar_reservas_si_hay_stock_fisico_y_avisar(client, db, usu
     db.flush()
     db.add(PedidoItem(pedido_id=pedido.id, producto_id=producto.id, cantidad=10))
     db.commit()
-    _login(client)
+    _login_almacen(client, db, usuario)
 
     response = client.post(
         "/api/inventario/movimientos",
@@ -105,7 +112,7 @@ def test_salida_puede_usar_reservas_si_hay_stock_fisico_y_avisar(client, db, usu
 
 def test_movimiento_idempotente_registra_ledger_una_sola_vez(client, db, usuario):
     producto = _producto_con_stock(db)
-    _login(client)
+    _login_almacen(client, db, usuario)
     payload = {
         "producto_id": producto.id,
         "tipo_movimiento": "merma",
@@ -138,7 +145,7 @@ def test_movimiento_manual_no_acepta_ventas_de_pedido_ni_actor_del_cliente(
     client, db, usuario, extra
 ):
     producto = _producto_con_stock(db)
-    _login(client)
+    _login_almacen(client, db, usuario)
     payload = {
         "producto_id": producto.id,
         "tipo_movimiento": "merma",
@@ -151,7 +158,7 @@ def test_movimiento_manual_no_acepta_ventas_de_pedido_ni_actor_del_cliente(
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("rol,esperado", [(Rol.ADMINISTRADOR.value, 201), (Rol.ALMACEN.value, 201), (Rol.VENDEDOR.value, 403), (Rol.ENSAMBLADOR.value, 403), (Rol.SOLO_LECTURA.value, 403)])
+@pytest.mark.parametrize("rol,esperado", [(Rol.ADMINISTRADOR.value, 403), (Rol.ALMACEN.value, 201), (Rol.VENDEDOR.value, 403), (Rol.ENSAMBLADOR.value, 403), (Rol.SOLO_LECTURA.value, 403)])
 def test_permisos_de_movimientos_se_validan_en_api(client, db, rol, esperado):
     from app.servicios.auth import get_password_hash
 
@@ -181,33 +188,26 @@ def test_permisos_de_movimientos_se_validan_en_api(client, db, rol, esperado):
 
 
 def test_producto_se_guarda_sin_precios(client, db, usuario):
-    _login(client)
+    _login_almacen(client, db, usuario)
     response = client.post(
         "/api/inventario/productos",
         json={"nombre": "Producto sin precio", "tipo": "componente"},
     )
     assert response.status_code == 201
-    assert response.json()["producto"]["precio_compra"] is None
-    assert response.json()["producto"]["precio_venta"] is None
+    assert "precio_compra" not in response.json()["producto"]
+    assert "precio_venta" not in response.json()["producto"]
 
 
-def test_administrador_edita_producto_y_precio(client, db, usuario):
+def test_administrador_no_accede_a_productos(client, db, usuario):
     producto = _producto_con_stock(db)
     _login(client)
-    response = client.patch(
+    assert client.get("/api/inventario/productos").status_code == 403
+    assert client.patch(
         f"/api/inventario/productos/{producto.id}",
-        json={
-            "nombre": "Producto corregido",
-            "codigo": "mx-edit-001",
-            "precio_compra": "8.25",
-            "precio_venta": "14.50",
-        },
-    )
-    assert response.status_code == 200
-    assert response.json()["producto"]["nombre"] == "Producto corregido"
-    assert response.json()["producto"]["codigo"] == "MX-EDIT-001"
-    assert response.json()["producto"]["precio_compra"] == "8.25"
-    assert response.json()["producto"]["precio_venta"] == "14.50"
+        json={"nombre": "Producto corregido"},
+    ).status_code == 403
+    db.refresh(producto)
+    assert producto.nombre == "Producto de prueba"
 
 
 def test_almacen_puede_editar_datos_no_monetarios(client, db):
@@ -238,7 +238,7 @@ def test_almacen_puede_editar_datos_no_monetarios(client, db):
 
 
 def test_producto_no_acepta_codigo_duplicado(client, db, usuario):
-    _login(client)
+    _login_almacen(client, db, usuario)
     first = client.post(
         "/api/inventario/productos",
         json={"nombre": "Código A", "tipo": "componente", "codigo": "dup-001"},
@@ -283,7 +283,7 @@ def test_almacen_no_puede_enviar_campos_de_precio(client, db):
 @pytest.mark.parametrize(
     "rol,esperado",
     [
-        (Rol.ADMINISTRADOR.value, 201),
+        (Rol.ADMINISTRADOR.value, 403),
         (Rol.ALMACEN.value, 201),
         (Rol.VENDEDOR.value, 403),
         (Rol.ENSAMBLADOR.value, 403),
@@ -375,7 +375,7 @@ def test_vendedor_no_puede_consultar_historial(client, db):
 
 def test_historial_filtra_por_producto_tipo_usuario_y_rango(client, db, usuario):
     producto = _producto_con_stock(db)
-    _login(client)
+    _login_almacen(client, db, usuario)
     movement_response = client.post(
         "/api/inventario/movimientos",
         json={
@@ -407,6 +407,9 @@ def test_historial_filtra_por_producto_tipo_usuario_y_rango(client, db, usuario)
 
 @pytest.mark.anyio
 async def test_venta_de_pedido_solo_se_registra_al_entregar_y_no_se_duplica(db, usuario):
+    usuario.rol = Rol.ALMACEN.value
+    usuario.es_admin = False
+    db.commit()
     cliente = Cliente(nombre="Venta ligada a pedido")
     producto = _producto_con_stock(db, cantidad=10)
     db.add(cliente)
@@ -454,6 +457,9 @@ async def test_venta_de_pedido_solo_se_registra_al_entregar_y_no_se_duplica(db, 
 async def test_envio_y_entrega_rechazan_salida_mayor_a_stock_y_revierte_todo(
     db, usuario, tool, args
 ):
+    usuario.rol = Rol.ALMACEN.value
+    usuario.es_admin = False
+    db.commit()
     producto = _producto_con_stock(db, cantidad=2)
     cliente = Cliente(nombre="Pedido sin existencia suficiente")
     db.add(cliente)

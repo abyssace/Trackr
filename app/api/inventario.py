@@ -11,6 +11,7 @@ from app.api.deps import get_current_user
 from app.db.base import get_db
 from app.db.modelos import Usuario
 from app.db.negocio import (
+    AuditoriaCambioPrecio,
     Categoria,
     MovimientoInventario,
     Producto,
@@ -25,14 +26,17 @@ from app.servicios.inventario import (
     stock_reservado,
 )
 from app.servicios.roles import (
+    puede_desactivar_catalogos,
     puede_desactivar_productos,
     puede_editar_productos,
     puede_registrar_movimientos,
     puede_ver_historial_inventario,
+    puede_ver_catalogo_inventario,
     puede_ver_precio_compra,
     puede_ver_precio_venta,
 )
 from app.servicios.movimientos import registrar_movimiento
+from app.servicios.precios import actualizar_precios_producto
 
 router = APIRouter(prefix="/api/inventario", tags=["inventario"])
 
@@ -189,6 +193,19 @@ class ProveedorActualizar(BaseModel):
         return value
 
 
+class PreciosActualizar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    precio_compra: Decimal | None = Field(default=None, max_digits=12, decimal_places=2, ge=0)
+    precio_venta: Decimal | None = Field(default=None, max_digits=12, decimal_places=2, ge=0)
+
+
+class PrecioVentaActualizar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    precio_venta: Decimal | None = Field(max_digits=12, decimal_places=2, ge=0)
+
+
 def _dinero(valor: Decimal) -> str:
     return format(valor.quantize(Decimal("0.01")), ".2f")
 
@@ -238,6 +255,8 @@ async def listar_productos(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
+    if not puede_ver_catalogo_inventario(usuario.rol):
+        raise HTTPException(status_code=403, detail="La cuenta de administración gestiona personal.")
     if incluir_inactivos and not puede_ver_precio_compra(usuario.rol):
         raise HTTPException(status_code=403, detail="Solo administración puede ver productos inactivos.")
 
@@ -254,6 +273,8 @@ async def catalogos(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
+    if not puede_ver_catalogo_inventario(usuario.rol):
+        raise HTTPException(status_code=403, detail="La cuenta de administración gestiona personal.")
     resultado = {
         "categorias": [
             {"id": c.id, "nombre": c.nombre}
@@ -286,7 +307,7 @@ async def listar_catalogos_gestion(
     usuario: Usuario = Depends(get_current_user),
 ):
     if not puede_editar_productos(usuario.rol):
-        raise HTTPException(status_code=403, detail="Solo administración y almacén pueden gestionar catálogos.")
+        raise HTTPException(status_code=403, detail="Solo almacén puede gestionar catálogos.")
     incluir_inactivos = puede_desactivar_productos(usuario.rol)
     categorias = db.query(Categoria)
     proveedores = db.query(Proveedor)
@@ -372,8 +393,8 @@ async def desactivar_categoria(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    if not puede_desactivar_productos(usuario.rol):
-        raise HTTPException(status_code=403, detail="Solo administración puede desactivar categorías.")
+    if not puede_desactivar_catalogos(usuario.rol):
+        raise HTTPException(status_code=403, detail="Solo almacén puede desactivar categorías.")
     categoria = db.get(Categoria, categoria_id)
     if categoria is None:
         raise HTTPException(status_code=404, detail="No encontramos esa categoría.")
@@ -443,8 +464,8 @@ async def desactivar_proveedor(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    if not puede_desactivar_productos(usuario.rol):
-        raise HTTPException(status_code=403, detail="Solo administración puede desactivar proveedores.")
+    if not puede_desactivar_catalogos(usuario.rol):
+        raise HTTPException(status_code=403, detail="Solo almacén puede desactivar proveedores.")
     proveedor = db.get(Proveedor, proveedor_id)
     if proveedor is None:
         raise HTTPException(status_code=404, detail="No encontramos ese proveedor.")
@@ -467,6 +488,8 @@ async def resumen_inventario(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
+    if not puede_ver_catalogo_inventario(usuario.rol):
+        raise HTTPException(status_code=403, detail="La cuenta de administración gestiona personal.")
     productos = buscar_productos(db, "")
     stock_por_producto = [(producto, stock_fisico(db, producto.id)) for producto in productos]
     kpis = calcular_kpis_inventario(stock_por_producto)
@@ -578,6 +601,36 @@ async def actualizar_producto(
         raise HTTPException(status_code=409, detail="Ese código ya está registrado.")
     db.refresh(producto)
     return {"producto": _producto_json(db, producto, usuario)}
+
+
+@router.patch("/productos/{producto_id}/precio-venta")
+async def actualizar_precio_venta_vendedor(
+    producto_id: int,
+    payload: PrecioVentaActualizar,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if usuario.rol != "vendedor":
+        raise HTTPException(status_code=403, detail="Esta pantalla solo permite al vendedor cambiar el precio de venta.")
+    try:
+        producto = actualizar_precios_producto(
+            db,
+            producto_id=producto_id,
+            usuario=usuario,
+            precio_venta=payload.precio_venta,
+        )
+        db.commit()
+        db.refresh(producto)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc))
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc))
+    except RuntimeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"ok": True, "producto_id": producto.id, "precio_venta": _dinero(producto.precio_venta) if producto.precio_venta is not None else None}
 
 
 @router.post("/productos/{producto_id}/desactivar")

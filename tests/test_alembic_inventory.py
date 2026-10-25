@@ -27,6 +27,9 @@ def test_alembic_bootstraps_empty_database_in_temp_directory(tmp_path):
         assert {"productos", "categorias", "proveedores", "usuarios"}.issubset(
             set(inspector.get_table_names())
         )
+        assert {"contexto_auditoria_precios", "auditoria_cambios_precios"}.issubset(
+            set(inspector.get_table_names())
+        )
         columns = {column["name"] for column in inspector.get_columns("productos")}
         assert {"codigo", "categoria_id", "proveedor_id", "precio_compra", "precio_venta"}.issubset(columns)
         movement_columns = {
@@ -34,7 +37,14 @@ def test_alembic_bootstraps_empty_database_in_temp_directory(tmp_path):
         }
         assert {"usuario_id", "idempotency_key"}.issubset(movement_columns)
         with engine.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0004_archive_order_items"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0006_auditoria_precios"
+            trigger = conn.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='trigger' AND name='trg_auditoria_cambios_precios'"
+                )
+            ).scalar_one()
+        assert trigger == "trg_auditoria_cambios_precios"
     finally:
         engine.dispose()
 
@@ -144,7 +154,12 @@ def test_alembic_adds_responsable_and_idempotency_to_legacy_ledger(tmp_path):
         }
         assert {"usuario_id", "idempotency_key"}.issubset(columns)
         user_columns = {column["name"] for column in inspect(engine).get_columns("usuarios")}
-        assert {"rol", "intentos_fallidos", "bloqueado_hasta"}.issubset(user_columns)
+        assert {
+            "rol",
+            "intentos_fallidos",
+            "bloqueado_hasta",
+            "debe_cambiar_password",
+        }.issubset(user_columns)
         order_item_columns = {
             column["name"] for column in inspect(engine).get_columns("pedido_items")
         }

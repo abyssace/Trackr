@@ -32,9 +32,9 @@ def _tool(name: str):
         (Rol.ALMACEN.value, "crear_pedido", False),
         (Rol.ENSAMBLADOR.value, "registrar_terminado", True),
         (Rol.ENSAMBLADOR.value, "crear_pedido", False),
-        (Rol.ADMINISTRADOR.value, "crear_pedido", True),
-        (Rol.ADMINISTRADOR.value, "registrar_terminado", True),
-        (Rol.ADMINISTRADOR.value, "consultar_existencia", True),
+        (Rol.ADMINISTRADOR.value, "crear_pedido", False),
+        (Rol.ADMINISTRADOR.value, "registrar_terminado", False),
+        (Rol.ADMINISTRADOR.value, "consultar_existencia", False),
         ("rol_inexistente", "consultar_existencia", False),
     ],
 )
@@ -58,8 +58,8 @@ def test_solo_lectura_solo_puede_lectura():
     }
 
 
-def test_administrador_puede_todas():
-    assert herramientas_permitidas(Rol.ADMINISTRADOR.value) == TODAS_LAS_HERRAMIENTAS
+def test_administrador_no_recibe_tools_de_negocio():
+    assert herramientas_permitidas(Rol.ADMINISTRADOR.value) == set()
 
 
 def test_filtrar_tools_mantiene_solo_permitidas():

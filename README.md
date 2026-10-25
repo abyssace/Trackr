@@ -149,6 +149,7 @@ uv run pytest -v
 | `POST` | `/api/login` | Log in, sets session cookie. |
 | `POST` | `/api/logout` | Clear session. |
 | `GET`  | `/api/me` | Current user info. |
+| `POST` | `/api/cambiar-password` | Change a temporary password on first login. |
 | `POST` | `/api/chat` | Send a text message to the agent. |
 | `GET`  | `/api/historial` | Get the current user's chat history. |
 | `GET`  | `/api/pendiente` | Get current pending write action, if any. |
@@ -158,17 +159,25 @@ uv run pytest -v
 | `GET` | `/api/inventario/productos` | Active product catalog with role-filtered prices; supports name/category/code search. |
 | `GET` | `/api/inventario/resumen` | Stock KPIs and role-filtered inventory values. |
 | `GET` | `/api/inventario/catalogos` | Active categories and suppliers. |
-| `GET` | `/api/inventario/catalogos/gestion` | Catalog details for administrator/warehouse. |
+| `GET` | `/api/inventario/catalogos/gestion` | Catalog details for warehouse. |
 | `POST` | `/api/inventario/categorias` | Create a category. |
 | `PATCH` | `/api/inventario/categorias/{id}` | Edit a category. |
-| `POST` | `/api/inventario/categorias/{id}/desactivar` | Admin-only deactivation; preserves references. |
+| `POST` | `/api/inventario/categorias/{id}/desactivar` | Warehouse deactivation; preserves references. |
 | `POST` | `/api/inventario/proveedores` | Create a supplier. |
 | `PATCH` | `/api/inventario/proveedores/{id}` | Edit a supplier. |
-| `POST` | `/api/inventario/proveedores/{id}/desactivar` | Admin-only deactivation; preserves references. |
+| `POST` | `/api/inventario/proveedores/{id}/desactivar` | Warehouse deactivation; preserves references. |
+| `GET` / `POST` | `/api/admin/personal` | Administrator-only personnel list and account creation; new staff must change their temporary password. |
+| `GET` | `/api/admin/productos-desactivables` | Minimal product list for the administrator's deactivation exception. |
+| `POST` | `/api/admin/productos/{id}/desactivar` | Administrator product deactivation exception. |
+| `GET` | `/api/admin/backup` | Administrator backup download exception. |
+| `GET` | `/api/admin/precios` | Administrator price management list. |
+| `PATCH` | `/api/admin/precios/{id}` | Administrator price updates. |
+| `GET` | `/api/admin/auditoria-precios` | Administrator price-change history, including actor and timestamp. |
+| `PATCH` | `/api/inventario/productos/{id}/precio-venta` | Seller updates sale price only. |
 | `POST` | `/api/inventario/productos` | Create a product, permitted roles only. |
 | `PATCH` | `/api/inventario/productos/{id}` | Edit a product, permitted roles only. |
 | `POST` | `/api/inventario/productos/{id}/desactivar` | Admin-only soft delete; preserves history. |
-| `GET` | `/api/inventario/movimientos` | Admin/warehouse movement history with filters. |
+| `GET` | `/api/inventario/movimientos` | Warehouse movement history with filters. |
 | `POST` | `/api/inventario/movimientos` | Register permitted stock entries and exits. |
 
 ---
@@ -176,7 +185,15 @@ uv run pytest -v
 ## Current data model
 
 ### `usuarios`
-Employees / users. Hashed passwords, active flag.
+Trackr login accounts with hashed passwords, role, lockout state and forced first-login password change. Business employees are linked through `empleados`.
+
+### Roles
+
+- `administrador`: personnel and role management, price management/audit, plus product deactivation and backup download exceptions.
+- `almacen`: inventory/catalog operations and movement history.
+- `vendedor`: active catalog, sale price viewing/editing and order tools.
+- `ensamblador`: catalog and production tool access.
+- `solo_lectura`: read-only business tools.
 
 ### `recordatorios`
 | Field | Notes |

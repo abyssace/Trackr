@@ -184,3 +184,25 @@ class MovimientoInventario(Base):
     referencia: Mapped[Optional[str]] = mapped_column(String(100))
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class ContextoAuditoriaPrecio(Base):
+    """Actor temporal para que los triggers SQLite registren la sesión actual."""
+
+    __tablename__ = "contexto_auditoria_precios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"))
+
+
+class AuditoriaCambioPrecio(Base):
+    __tablename__ = "auditoria_cambios_precios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    producto_id: Mapped[int] = mapped_column(ForeignKey("productos.id"))
+    producto_nombre: Mapped[str] = mapped_column(String(100))
+    campo: Mapped[str] = mapped_column(String(30))
+    valor_anterior: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    valor_nuevo: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
+    cambiado_en: Mapped[datetime]

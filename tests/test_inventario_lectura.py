@@ -132,7 +132,7 @@ def test_kpi_calcula_valores_con_decimal_y_cuenta_precios_pendientes(db):
 @pytest.mark.parametrize(
     "rol,puede_editar,puede_movimiento,puede_desactivar,compra,venta,historial",
     [
-        (Rol.ADMINISTRADOR.value, True, True, True, True, True, True),
+        (Rol.ADMINISTRADOR.value, False, False, True, True, True, False),
         (Rol.ALMACEN.value, True, True, False, False, False, True),
         (Rol.VENDEDOR.value, False, False, False, False, True, False),
         (Rol.ENSAMBLADOR.value, False, False, False, False, False, False),
@@ -207,7 +207,6 @@ def test_busqueda_resuelve_nombre_en_plural(client, db):
 @pytest.mark.parametrize(
     "rol,compra,venta",
     [
-        (Rol.ADMINISTRADOR.value, True, True),
         (Rol.ALMACEN.value, False, False),
         (Rol.VENDEDOR.value, False, True),
         (Rol.ENSAMBLADOR.value, False, False),
@@ -269,6 +268,21 @@ def test_solo_administrador_puede_incluir_inactivos(client, db):
         params={"incluir_inactivos": "true"},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "/api/inventario/productos",
+        "/api/inventario/catalogos",
+        "/api/inventario/resumen",
+        "/api/inventario/movimientos",
+    ],
+)
+def test_administrador_no_accede_a_modulos_de_inventario(client, db, endpoint):
+    admin = _crear_usuario(db, Rol.ADMINISTRADOR.value)
+    _login(client, admin.username)
+    assert client.get(endpoint).status_code == 403
 
 
 def test_api_devuelve_alerta_roja_fisica_y_ambar_por_comprometido(client, db):

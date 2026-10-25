@@ -91,7 +91,7 @@ def await_confirmar(db, pendiente, usuario):
 @pytest.mark.parametrize(
     "rol,permitido",
     [
-        (Rol.ADMINISTRADOR.value, False),
+        (Rol.ADMINISTRADOR.value, True),
         (Rol.ALMACEN.value, True),
         (Rol.VENDEDOR.value, False),
         (Rol.ENSAMBLADOR.value, False),

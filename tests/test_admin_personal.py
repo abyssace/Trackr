@@ -135,8 +135,15 @@ def test_cuenta_nueva_debe_cambiar_password_antes_de_usar_la_app(client, db, usu
     assert _login(client, "vendedor_nuevo", "TemporalSeguro2026!").status_code == 401
 
 
-def test_admin_no_usa_chat_ni_catalogo_general_pero_conserva_excepciones(client, db, usuario):
-    producto = Producto(nombre="Producto oculto al admin", tipo="componente", activo=True)
+def test_admin_usa_chat_y_catalogo_general_y_conserva_excepciones(
+    client, db, usuario, monkeypatch
+):
+    async def fake_run_agent(*args, **kwargs):
+        return "Respuesta de prueba", []
+
+    monkeypatch.setattr("app.api.chat.run_agent", fake_run_agent)
+
+    producto = Producto(nombre="Producto visible al admin", tipo="componente", activo=True)
     db.add(producto)
     db.flush()
     db.add(
@@ -149,14 +156,14 @@ def test_admin_no_usa_chat_ni_catalogo_general_pero_conserva_excepciones(client,
     db.commit()
     assert _login(client).status_code == 200
 
-    assert client.get("/api/inventario/productos").status_code == 403
-    assert client.get("/api/inventario/resumen").status_code == 403
-    assert client.get("/api/inventario/movimientos").status_code == 403
-    assert client.get("/api/inventario/catalogos").status_code == 403
-    assert client.get("/api/inventario/catalogos/gestion").status_code == 403
-    assert client.post("/api/chat", json={"mensaje": "hola"}).status_code == 403
-    assert client.get("/api/historial").status_code == 403
-    assert client.get("/api/pendiente").status_code == 403
+    assert client.get("/api/inventario/productos").status_code == 200
+    assert client.get("/api/inventario/resumen").status_code == 200
+    assert client.get("/api/inventario/movimientos").status_code == 200
+    assert client.get("/api/inventario/catalogos").status_code == 200
+    assert client.get("/api/inventario/catalogos/gestion").status_code == 200
+    assert client.post("/api/chat", json={"mensaje": "hola"}).status_code == 200
+    assert client.get("/api/historial").status_code == 200
+    assert client.get("/api/pendiente").status_code == 200
 
     minimal = client.get("/api/admin/productos-desactivables")
     assert minimal.status_code == 200

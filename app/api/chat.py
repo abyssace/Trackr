@@ -15,7 +15,7 @@ from app.agente.tools.recordatorios import make_recordatorio_tools
 from app.agente.tools.negocio import make_negocio_tools
 from app.agente.tools.escritura import make_escritura_tools
 from app.servicios.memoria import guardar_mensaje, obtener_historial
-from app.servicios.roles import Rol, filtrar_tools
+from app.servicios.roles import filtrar_tools
 from app.servicios.confirmacion import (
     obtener_pendiente,
     puede_confirmar,
@@ -45,21 +45,12 @@ def _check_rate_limit(user_id: int):
     window.append(now)
 
 
-def _exigir_acceso_chat(usuario: Usuario) -> None:
-    if usuario.rol == Rol.ADMINISTRADOR.value:
-        raise HTTPException(
-            status_code=403,
-            detail="La cuenta de administración solo gestiona personal y sus excepciones del sistema.",
-        )
-
-
 @router.post("/chat")
 async def chat(
     payload: ChatPayload,
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    _exigir_acceso_chat(usuario)
     _check_rate_limit(usuario.id)
 
     texto = payload.mensaje.strip().lower()
@@ -151,7 +142,6 @@ async def historial(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    _exigir_acceso_chat(usuario)
     filas = (
         db.query(Mensaje)
         .filter(Mensaje.usuario_id == usuario.id, Mensaje.rol.in_(["user", "assistant"]))
@@ -170,7 +160,6 @@ async def pendiente(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    _exigir_acceso_chat(usuario)
     accion = obtener_pendiente(db, usuario.id)
     if accion is None:
         return {"pendiente": False}
@@ -188,7 +177,6 @@ async def confirmar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    _exigir_acceso_chat(usuario)
     accion = obtener_pendiente(db, usuario.id)
     if accion is None:
         raise HTTPException(404, "No hay acción pendiente.")
@@ -209,7 +197,6 @@ async def cancelar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    _exigir_acceso_chat(usuario)
     accion = obtener_pendiente(db, usuario.id)
     if accion is None:
         raise HTTPException(404, "No hay acción pendiente.")

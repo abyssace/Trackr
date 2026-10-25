@@ -54,7 +54,7 @@ No ejecutes el seed de datos de ejemplo en una base de producción.
 
 ## Roles
 
-- **Administrador:** administra personal y roles; puede gestionar precios, consultar su auditoría, desactivar productos y descargar respaldos.
+- **Administrador:** tiene acceso total. Puede usar el chat con todas las herramientas, gestionar productos, categorías, proveedores y movimientos de inventario, administrar personal y roles, gestionar precios, consultar su auditoría, desactivar productos y descargar respaldos.
 - **Almacén:** administra productos, categorías, proveedores y movimientos de inventario.
 - **Vendedor:** gestiona pedidos y puede cambiar precios de venta; no puede ver precios de compra.
 - **Ensamblador:** consulta información operativa y registra productos terminados según los permisos de la aplicación.

@@ -44,10 +44,9 @@ PERMISOS_POR_ROL: dict[str, set[str]] = {
         "actualizar_stock_minimo",
     },
     Rol.ENSAMBLADOR.value: set(_HERRAMIENTAS_LECTURA) | {"registrar_terminado"},
-    # El administrador de Trackr administra cuentas y permisos, no operaciones
-    # de negocio por chat. Sus excepciones (desactivar producto y backup) son
-    # endpoints explícitos, fuera del agente.
-    Rol.ADMINISTRADOR.value: set(),
+    # El administrador es superusuario: además de cuentas y excepciones del
+    # sistema, puede operar el negocio por chat y desde el inventario.
+    Rol.ADMINISTRADOR.value: set(TODAS_LAS_HERRAMIENTAS),
 }
 
 
@@ -69,11 +68,11 @@ def roles_validos() -> list[str]:
 
 
 def puede_editar_productos(rol: str | None) -> bool:
-    return rol == Rol.ALMACEN.value
+    return rol in {Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
 
 
 def puede_registrar_movimientos(rol: str | None) -> bool:
-    return rol == Rol.ALMACEN.value
+    return rol in {Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
 
 
 def puede_desactivar_productos(rol: str | None) -> bool:
@@ -97,7 +96,7 @@ def puede_editar_precio_venta(rol: str | None) -> bool:
 
 
 def puede_ver_historial_inventario(rol: str | None) -> bool:
-    return rol == Rol.ALMACEN.value
+    return rol in {Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
 
 
 def puede_ver_catalogo_inventario(rol: str | None) -> bool:
@@ -106,6 +105,7 @@ def puede_ver_catalogo_inventario(rol: str | None) -> bool:
         Rol.VENDEDOR.value,
         Rol.ALMACEN.value,
         Rol.ENSAMBLADOR.value,
+        Rol.ADMINISTRADOR.value,
     }
 
 
@@ -114,13 +114,16 @@ def puede_gestionar_personal(rol: str | None) -> bool:
 
 
 def puede_desactivar_catalogos(rol: str | None) -> bool:
-    return rol == Rol.ALMACEN.value
+    return rol in {Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
 
 
 def permisos_descriptivos(rol: str | None) -> list[str]:
     """Labels para que administración pueda revisar permisos sin exponer internals."""
     permisos = {
         Rol.ADMINISTRADOR.value: [
+            "Usar el chat con todas las herramientas del negocio",
+            "Ver y gestionar productos, categorías y proveedores",
+            "Registrar entradas y salidas de inventario",
             "Agregar cuentas de personal y asignarles un rol",
             "Consultar los permisos de cada rol",
             "Ver y editar precios de compra y venta",

@@ -490,7 +490,6 @@
     }
 
     async function showChat() {
-      if (currentRole === 'administrador') return showPersonnel();
       cerrarCamaraCodigo();
       loginBox.classList.add('hidden');
       passwordChangeBox.classList.add('hidden');
@@ -498,7 +497,7 @@
       appNav.classList.remove('hidden');
       document.getElementById('showChatBtn').classList.remove('hidden');
       document.getElementById('showInventoryBtn').classList.remove('hidden');
-      showPersonnelBtn.classList.add('hidden');
+      showPersonnelBtn.classList.toggle('hidden', currentRole !== 'administrador');
       chatBox.classList.remove('hidden');
       inventoryBox.classList.add('hidden');
       document.getElementById('showChatBtn').setAttribute('aria-current', 'page');
@@ -508,14 +507,13 @@
     }
 
     async function showInventory() {
-      if (currentRole === 'administrador') return showPersonnel();
       loginBox.classList.add('hidden');
       passwordChangeBox.classList.add('hidden');
       personnelBox.classList.add('hidden');
       appNav.classList.remove('hidden');
       document.getElementById('showChatBtn').classList.remove('hidden');
       document.getElementById('showInventoryBtn').classList.remove('hidden');
-      showPersonnelBtn.classList.add('hidden');
+      showPersonnelBtn.classList.toggle('hidden', currentRole !== 'administrador');
       chatBox.classList.add('hidden');
       inventoryBox.classList.remove('hidden');
       document.getElementById('showInventoryBtn').setAttribute('aria-current', 'page');
@@ -536,7 +534,6 @@
     async function showAfterLogin(user) {
       currentRole = user.rol;
       if (user.debe_cambiar_password) return showPasswordChange();
-      if (currentRole === 'administrador') return showPersonnel();
       return showChat();
     }
 
@@ -560,8 +557,10 @@
       inventoryBox.classList.add('hidden');
       personnelBox.classList.remove('hidden');
       appNav.classList.remove('hidden');
-      document.getElementById('showChatBtn').classList.add('hidden');
-      document.getElementById('showInventoryBtn').classList.add('hidden');
+      document.getElementById('showChatBtn').classList.remove('hidden');
+      document.getElementById('showInventoryBtn').classList.remove('hidden');
+      document.getElementById('showChatBtn').removeAttribute('aria-current');
+      document.getElementById('showInventoryBtn').removeAttribute('aria-current');
       showPersonnelBtn.classList.remove('hidden');
       showPersonnelBtn.setAttribute('aria-current', 'page');
       if (eventSource) eventSource.close();

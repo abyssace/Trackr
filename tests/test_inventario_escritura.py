@@ -158,7 +158,7 @@ def test_movimiento_manual_no_acepta_ventas_de_pedido_ni_actor_del_cliente(
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("rol,esperado", [(Rol.ADMINISTRADOR.value, 403), (Rol.ALMACEN.value, 201), (Rol.VENDEDOR.value, 403), (Rol.ENSAMBLADOR.value, 403), (Rol.SOLO_LECTURA.value, 403)])
+@pytest.mark.parametrize("rol,esperado", [(Rol.ADMINISTRADOR.value, 201), (Rol.ALMACEN.value, 201), (Rol.VENDEDOR.value, 403), (Rol.ENSAMBLADOR.value, 403), (Rol.SOLO_LECTURA.value, 403)])
 def test_permisos_de_movimientos_se_validan_en_api(client, db, rol, esperado):
     from app.servicios.auth import get_password_hash
 
@@ -198,16 +198,16 @@ def test_producto_se_guarda_sin_precios(client, db, usuario):
     assert "precio_venta" not in response.json()["producto"]
 
 
-def test_administrador_no_accede_a_productos(client, db, usuario):
+def test_administrador_puede_editar_productos(client, db, usuario):
     producto = _producto_con_stock(db)
     _login(client)
-    assert client.get("/api/inventario/productos").status_code == 403
+    assert client.get("/api/inventario/productos").status_code == 200
     assert client.patch(
         f"/api/inventario/productos/{producto.id}",
         json={"nombre": "Producto corregido"},
-    ).status_code == 403
+    ).status_code == 200
     db.refresh(producto)
-    assert producto.nombre == "Producto de prueba"
+    assert producto.nombre == "Producto corregido"
 
 
 def test_almacen_puede_editar_datos_no_monetarios(client, db):
@@ -283,7 +283,7 @@ def test_almacen_no_puede_enviar_campos_de_precio(client, db):
 @pytest.mark.parametrize(
     "rol,esperado",
     [
-        (Rol.ADMINISTRADOR.value, 403),
+        (Rol.ADMINISTRADOR.value, 201),
         (Rol.ALMACEN.value, 201),
         (Rol.VENDEDOR.value, 403),
         (Rol.ENSAMBLADOR.value, 403),

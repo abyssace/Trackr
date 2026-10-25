@@ -23,6 +23,18 @@ def test_parse_rejects_past_date():
         parse_fecha_hora(ayer)
 
 
+def test_crear_recordatorio_rechaza_fecha_de_1890_y_no_guarda(db, usuario):
+    mensaje = _crear_recordatorio(
+        db,
+        usuario,
+        "Recordatorio histórico",
+        "1890-10-12T12:00:00-06:00",
+    )
+
+    assert "La fecha/hora debe ser futura." in mensaje
+    assert db.query(Recordatorio).filter_by(usuario_id=usuario.id).count() == 0
+
+
 def test_parse_converts_to_utc():
     dt = parse_fecha_hora("2030-01-01T12:00:00-06:00")
     assert dt.tzinfo is not None

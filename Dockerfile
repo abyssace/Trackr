@@ -13,7 +13,7 @@ RUN uv sync --no-dev
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
-ENV DATABASE_URL=sqlite:///data/trackr.db
+ENV DATABASE_URL=sqlite:////data/trackr.db
 ENV BACKUP_DIR=/data/backups
 
 EXPOSE 8000

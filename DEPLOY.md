@@ -6,7 +6,7 @@ Trackr es una aplicación FastAPI + SQLite diseñada para correr en un solo cont
 
 | Variable | Descripción | Ejemplo |
 |----------|-------------|---------|
-| `DATABASE_URL` | Ruta del SQLite (en Railway debe apuntar a `/data`) | `sqlite:///data/trackr.db` |
+| `DATABASE_URL` | Ruta absoluta del SQLite en el volumen (`/data`) | `sqlite:////data/trackr.db` |
 | `SECRET_KEY` | Clave para firmar sesiones (mínimo 32 caracteres) | `cambia-esto-en-produccion` |
 | `OPENAI_API_KEY` | API key de OpenAI (preferida si está configurada) | `sk-...` |
 | `OPENAI_BASE_URL` | Base URL opcional para OpenAI | `https://api.openai.com/v1` |
@@ -34,7 +34,7 @@ Trackr es una aplicación FastAPI + SQLite diseñada para correr en un solo cont
 
 1. Crea un proyecto y un servicio vacío en Railway.
 2. Conecta el repositorio de GitHub.
-3. Configura la variable `DATABASE_URL` como `sqlite:///data/trackr.db`.
+3. Configura la variable `DATABASE_URL` como `sqlite:////data/trackr.db` (cuatro `/`: ruta absoluta `/data/trackr.db` dentro del volumen).
 4. Activa el **volume persistente** y móntalo en `/data`.
 5. Configura `SECRET_KEY` y al menos una API key de LLM (`OPENAI_API_KEY` o `OPENROUTER_API_KEY`).
 6. Despliega. Railway usará el `Dockerfile` incluido.

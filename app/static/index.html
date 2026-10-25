@@ -155,6 +155,46 @@
 
     <section id="inventoryWritePanel" class="box hidden" aria-labelledby="writeInventoryTitle">
       <h3 id="writeInventoryTitle">Administrar inventario</h3>
+      <div class="inventory-grid">
+        <form id="categoryForm" class="box">
+          <h4 id="categoryFormTitle">Agregar categoría</h4>
+          <label for="categoryName">Nombre de la categoría</label>
+          <input id="categoryName" type="text" maxlength="100" required />
+          <label for="categoryDescription">Descripción (opcional)</label>
+          <textarea id="categoryDescription" rows="2" maxlength="4000"></textarea>
+          <div class="row">
+            <button id="saveCategoryBtn" type="submit">Guardar categoría</button>
+            <button id="cancelCategoryEditBtn" type="button" class="hidden">Cancelar edición</button>
+          </div>
+          <p id="categoryFormMessage" role="status"></p>
+        </form>
+        <form id="supplierForm" class="box">
+          <h4 id="supplierFormTitle">Agregar proveedor</h4>
+          <label for="supplierName">Nombre del proveedor</label>
+          <input id="supplierName" type="text" maxlength="150" required />
+          <label for="supplierContact">Persona de contacto (opcional)</label>
+          <input id="supplierContact" type="text" maxlength="100" />
+          <label for="supplierPhone">Teléfono (opcional)</label>
+          <input id="supplierPhone" type="tel" maxlength="20" />
+          <label for="supplierEmail">Correo (opcional)</label>
+          <input id="supplierEmail" type="email" maxlength="120" />
+          <div class="row">
+            <button id="saveSupplierBtn" type="submit">Guardar proveedor</button>
+            <button id="cancelSupplierEditBtn" type="button" class="hidden">Cancelar edición</button>
+          </div>
+          <p id="supplierFormMessage" role="status"></p>
+        </form>
+      </div>
+      <div class="inventory-grid">
+        <section class="box" aria-labelledby="categoryListTitle">
+          <h4 id="categoryListTitle">Categorías guardadas</h4>
+          <div id="categoryManagementList" class="product-list"></div>
+        </section>
+        <section class="box" aria-labelledby="supplierListTitle">
+          <h4 id="supplierListTitle">Proveedores guardados</h4>
+          <div id="supplierManagementList" class="product-list"></div>
+        </section>
+      </div>
       <form id="productForm" class="box">
         <h4 id="productFormTitle">Agregar producto</h4>
         <label for="productName">Nombre</label>
@@ -285,6 +325,12 @@
     const productList = document.getElementById('productList');
     const inventoryMessage = document.getElementById('inventoryMessage');
     const inventoryWritePanel = document.getElementById('inventoryWritePanel');
+    const categoryForm = document.getElementById('categoryForm');
+    const categoryManagementList = document.getElementById('categoryManagementList');
+    const categoryFormMessage = document.getElementById('categoryFormMessage');
+    const supplierForm = document.getElementById('supplierForm');
+    const supplierManagementList = document.getElementById('supplierManagementList');
+    const supplierFormMessage = document.getElementById('supplierFormMessage');
     const productForm = document.getElementById('productForm');
     const productFormTitle = document.getElementById('productFormTitle');
     const productFormMessage = document.getElementById('productFormMessage');
@@ -308,6 +354,8 @@
     let searchTimer = null;
     let currentRole = null;
     let editingProductId = null;
+    let editingCategoryId = null;
+    let editingSupplierId = null;
     let barcodeStream = null;
     let barcodeDetector = null;
     let scanningBarcode = false;
@@ -600,8 +648,217 @@
         rellenarSelect(productSupplier, data.proveedores || [], 'Sin proveedor');
         rellenarSelect(historyUser, data.usuarios || [], 'Todos');
         await loadMovementProductOptions();
+        await loadCatalogManagement();
       } catch (error) {
         productFormMessage.textContent = error.message;
+      }
+    }
+
+    async function loadCatalogManagement() {
+      try {
+        const response = await fetch('/api/inventario/catalogos/gestion', { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudieron cargar los catálogos.');
+        renderCategoryManagement(data.categorias || []);
+        renderSupplierManagement(data.proveedores || []);
+      } catch (error) {
+        categoryFormMessage.textContent = error.message;
+        supplierFormMessage.textContent = error.message;
+      }
+    }
+
+    function agregarAccionesCatalogo(card, onEdit, onDeactivate, active) {
+      const actions = document.createElement('div');
+      actions.className = 'row';
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.textContent = 'Editar';
+      edit.addEventListener('click', onEdit);
+      actions.appendChild(edit);
+      if (currentRole === 'administrador' && active) {
+        const deactivate = document.createElement('button');
+        deactivate.type = 'button'; deactivate.textContent = 'Desactivar';
+        deactivate.addEventListener('click', onDeactivate);
+        actions.appendChild(deactivate);
+      }
+      card.appendChild(actions);
+    }
+
+    function renderCategoryManagement(records) {
+      categoryManagementList.replaceChildren();
+      if (!records.length) {
+        const empty = document.createElement('p'); empty.className = 'muted';
+        empty.textContent = 'Todavía no hay categorías.';
+        categoryManagementList.appendChild(empty);
+        return;
+      }
+      records.forEach(category => {
+        const card = document.createElement('article'); card.className = 'product-card';
+        const title = document.createElement('h5');
+        title.textContent = category.activo ? category.nombre : `${category.nombre} (inactiva)`;
+        card.appendChild(title);
+        if (category.descripcion) {
+          const description = document.createElement('p');
+          description.textContent = category.descripcion;
+          card.appendChild(description);
+        }
+        agregarAccionesCatalogo(
+          card,
+          () => editarCategoria(category),
+          () => desactivarCatalogo('categorias', category, 'categoría'),
+          category.activo,
+        );
+        categoryManagementList.appendChild(card);
+      });
+    }
+
+    function renderSupplierManagement(records) {
+      supplierManagementList.replaceChildren();
+      if (!records.length) {
+        const empty = document.createElement('p'); empty.className = 'muted';
+        empty.textContent = 'Todavía no hay proveedores.';
+        supplierManagementList.appendChild(empty);
+        return;
+      }
+      records.forEach(supplier => {
+        const card = document.createElement('article'); card.className = 'product-card';
+        const title = document.createElement('h5');
+        title.textContent = supplier.activo ? supplier.nombre : `${supplier.nombre} (inactivo)`;
+        card.appendChild(title);
+        const details = [supplier.contacto, supplier.telefono, supplier.correo].filter(Boolean);
+        if (details.length) {
+          const info = document.createElement('p'); info.className = 'muted';
+          info.textContent = details.join(' · ');
+          card.appendChild(info);
+        }
+        agregarAccionesCatalogo(
+          card,
+          () => editarProveedor(supplier),
+          () => desactivarCatalogo('proveedores', supplier, 'proveedor'),
+          supplier.activo,
+        );
+        supplierManagementList.appendChild(card);
+      });
+    }
+
+    function editarCategoria(category) {
+      editingCategoryId = category.id;
+      document.getElementById('categoryName').value = category.nombre;
+      document.getElementById('categoryDescription').value = category.descripcion || '';
+      document.getElementById('categoryFormTitle').textContent = `Editar categoría: ${category.nombre}`;
+      document.getElementById('saveCategoryBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelCategoryEditBtn').classList.remove('hidden');
+      categoryForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetCategoryForm() {
+      editingCategoryId = null;
+      categoryForm.reset();
+      document.getElementById('categoryFormTitle').textContent = 'Agregar categoría';
+      document.getElementById('saveCategoryBtn').textContent = 'Guardar categoría';
+      document.getElementById('cancelCategoryEditBtn').classList.add('hidden');
+      categoryFormMessage.textContent = '';
+    }
+
+    function editarProveedor(supplier) {
+      editingSupplierId = supplier.id;
+      document.getElementById('supplierName').value = supplier.nombre;
+      document.getElementById('supplierContact').value = supplier.contacto || '';
+      document.getElementById('supplierPhone').value = supplier.telefono || '';
+      document.getElementById('supplierEmail').value = supplier.correo || '';
+      document.getElementById('supplierFormTitle').textContent = `Editar proveedor: ${supplier.nombre}`;
+      document.getElementById('saveSupplierBtn').textContent = 'Guardar cambios';
+      document.getElementById('cancelSupplierEditBtn').classList.remove('hidden');
+      supplierForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetSupplierForm() {
+      editingSupplierId = null;
+      supplierForm.reset();
+      document.getElementById('supplierFormTitle').textContent = 'Agregar proveedor';
+      document.getElementById('saveSupplierBtn').textContent = 'Guardar proveedor';
+      document.getElementById('cancelSupplierEditBtn').classList.add('hidden');
+      supplierFormMessage.textContent = '';
+    }
+
+    document.getElementById('cancelCategoryEditBtn').addEventListener('click', resetCategoryForm);
+    document.getElementById('cancelSupplierEditBtn').addEventListener('click', resetSupplierForm);
+
+    categoryForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const payload = {
+        nombre: document.getElementById('categoryName').value.trim(),
+        descripcion: document.getElementById('categoryDescription').value.trim() || null,
+      };
+      const editing = editingCategoryId !== null;
+      const button = document.getElementById('saveCategoryBtn'); button.disabled = true;
+      categoryFormMessage.textContent = 'Guardando…';
+      try {
+        const response = await fetch(
+          editing ? `/api/inventario/categorias/${editingCategoryId}` : '/api/inventario/categorias',
+          {
+            method: editing ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+          },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo guardar la categoría.');
+        resetCategoryForm();
+        await loadCatalogs();
+        categoryFormMessage.textContent = editing ? 'Categoría actualizada.' : 'Categoría guardada.';
+      } catch (error) {
+        categoryFormMessage.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    supplierForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const payload = {
+        nombre: document.getElementById('supplierName').value.trim(),
+        contacto: document.getElementById('supplierContact').value.trim() || null,
+        telefono: document.getElementById('supplierPhone').value.trim() || null,
+        correo: document.getElementById('supplierEmail').value.trim() || null,
+      };
+      const editing = editingSupplierId !== null;
+      const button = document.getElementById('saveSupplierBtn'); button.disabled = true;
+      supplierFormMessage.textContent = 'Guardando…';
+      try {
+        const response = await fetch(
+          editing ? `/api/inventario/proveedores/${editingSupplierId}` : '/api/inventario/proveedores',
+          {
+            method: editing ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+          },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No se pudo guardar el proveedor.');
+        resetSupplierForm();
+        await loadCatalogs();
+        supplierFormMessage.textContent = editing ? 'Proveedor actualizado.' : 'Proveedor guardado.';
+      } catch (error) {
+        supplierFormMessage.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function desactivarCatalogo(tipo, record, etiqueta) {
+      if (!window.confirm(`¿Desactivar ${etiqueta} “${record.nombre}”? No se borrará; conservará el historial.`)) return;
+      try {
+        const response = await fetch(
+          `/api/inventario/${tipo}/${record.id}/desactivar`,
+          { method: 'POST', credentials: 'same-origin' },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `No se pudo desactivar ${etiqueta}.`);
+        await loadCatalogs();
+      } catch (error) {
+        (tipo === 'categorias' ? categoryFormMessage : supplierFormMessage).textContent = error.message;
       }
     }
 

@@ -20,6 +20,7 @@ from app.servicios.inventario import (
     buscar_productos,
     calcular_kpis_inventario,
     evaluar_alerta_stock,
+    normalizar_busqueda,
     stock_fisico,
     stock_reservado,
 )
@@ -120,6 +121,74 @@ class MovimientoCrear(BaseModel):
         return self
 
 
+class CategoriaCrear(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str = Field(min_length=1, max_length=100)
+    descripcion: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Escribe el nombre de la categoría.")
+        return value
+
+
+class CategoriaActualizar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    descripcion: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Escribe el nombre de la categoría.")
+        return value
+
+
+class ProveedorCrear(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str = Field(min_length=1, max_length=150)
+    contacto: str | None = Field(default=None, max_length=100)
+    telefono: str | None = Field(default=None, max_length=20)
+    correo: str | None = Field(default=None, max_length=120)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Escribe el nombre del proveedor.")
+        return value
+
+
+class ProveedorActualizar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str | None = Field(default=None, min_length=1, max_length=150)
+    contacto: str | None = Field(default=None, max_length=100)
+    telefono: str | None = Field(default=None, max_length=20)
+    correo: str | None = Field(default=None, max_length=120)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Escribe el nombre del proveedor.")
+        return value
+
+
 def _dinero(valor: Decimal) -> str:
     return format(valor.quantize(Decimal("0.01")), ".2f")
 
@@ -209,6 +278,188 @@ async def catalogos(
             .all()
         ]
     return resultado
+
+
+@router.get("/catalogos/gestion")
+async def listar_catalogos_gestion(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_editar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="Solo administración y almacén pueden gestionar catálogos.")
+    incluir_inactivos = puede_desactivar_productos(usuario.rol)
+    categorias = db.query(Categoria)
+    proveedores = db.query(Proveedor)
+    if not incluir_inactivos:
+        categorias = categorias.filter(Categoria.activo == True)
+        proveedores = proveedores.filter(Proveedor.activo == True)
+    return {
+        "categorias": [
+            {"id": c.id, "nombre": c.nombre, "descripcion": c.descripcion, "activo": c.activo}
+            for c in categorias.order_by(Categoria.nombre).all()
+        ],
+        "proveedores": [
+            {
+                "id": p.id,
+                "nombre": p.nombre,
+                "contacto": p.contacto,
+                "telefono": p.telefono,
+                "correo": p.correo,
+                "activo": p.activo,
+            }
+            for p in proveedores.order_by(Proveedor.nombre).all()
+        ],
+    }
+
+
+def _validar_nombre_catalogo(db: Session, modelo, nombre: str, excluir_id: int | None = None):
+    normalizado = " ".join(normalizar_busqueda(nombre).split())
+    for existente in db.query(modelo).all():
+        existente_normalizado = " ".join(normalizar_busqueda(existente.nombre).split())
+        if existente.id != excluir_id and existente_normalizado == normalizado:
+            raise HTTPException(status_code=409, detail="Ya existe un registro con ese nombre.")
+
+
+@router.post("/categorias", status_code=201)
+async def crear_categoria(
+    payload: CategoriaCrear,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_editar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="No tienes permiso para crear categorías.")
+    _validar_nombre_catalogo(db, Categoria, payload.nombre)
+    categoria = Categoria(nombre=payload.nombre, descripcion=payload.descripcion, activo=True)
+    db.add(categoria)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una categoría con ese nombre.")
+    db.refresh(categoria)
+    return {"categoria": {"id": categoria.id, "nombre": categoria.nombre, "activo": categoria.activo}}
+
+
+@router.patch("/categorias/{categoria_id}")
+async def actualizar_categoria(
+    categoria_id: int,
+    payload: CategoriaActualizar,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_editar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="No tienes permiso para editar categorías.")
+    categoria = db.get(Categoria, categoria_id)
+    if categoria is None:
+        raise HTTPException(status_code=404, detail="No encontramos esa categoría.")
+    datos = payload.model_dump(exclude_unset=True)
+    if "nombre" in datos and datos["nombre"] is not None:
+        _validar_nombre_catalogo(db, Categoria, datos["nombre"], excluir_id=categoria_id)
+    for campo, valor in datos.items():
+        setattr(categoria, campo, valor)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una categoría con ese nombre.")
+    db.refresh(categoria)
+    return {"categoria": {"id": categoria.id, "nombre": categoria.nombre, "activo": categoria.activo}}
+
+
+@router.post("/categorias/{categoria_id}/desactivar")
+async def desactivar_categoria(
+    categoria_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_desactivar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="Solo administración puede desactivar categorías.")
+    categoria = db.get(Categoria, categoria_id)
+    if categoria is None:
+        raise HTTPException(status_code=404, detail="No encontramos esa categoría.")
+    productos_activos = db.query(Producto.id).filter(
+        Producto.categoria_id == categoria.id,
+        Producto.activo == True,
+    ).count()
+    if productos_activos:
+        raise HTTPException(
+            status_code=409,
+            detail="Primero cambia la categoría o desactiva los productos que la usan.",
+        )
+    categoria.activo = False
+    db.commit()
+    return {"ok": True, "activo": False, "categoria_id": categoria.id}
+
+
+@router.post("/proveedores", status_code=201)
+async def crear_proveedor(
+    payload: ProveedorCrear,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_editar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="No tienes permiso para crear proveedores.")
+    _validar_nombre_catalogo(db, Proveedor, payload.nombre)
+    proveedor = Proveedor(**payload.model_dump(), activo=True)
+    db.add(proveedor)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un proveedor con ese nombre.")
+    db.refresh(proveedor)
+    return {"proveedor": {"id": proveedor.id, "nombre": proveedor.nombre, "activo": proveedor.activo}}
+
+
+@router.patch("/proveedores/{proveedor_id}")
+async def actualizar_proveedor(
+    proveedor_id: int,
+    payload: ProveedorActualizar,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_editar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="No tienes permiso para editar proveedores.")
+    proveedor = db.get(Proveedor, proveedor_id)
+    if proveedor is None:
+        raise HTTPException(status_code=404, detail="No encontramos ese proveedor.")
+    datos = payload.model_dump(exclude_unset=True)
+    if "nombre" in datos and datos["nombre"] is not None:
+        _validar_nombre_catalogo(db, Proveedor, datos["nombre"], excluir_id=proveedor_id)
+    for campo, valor in datos.items():
+        setattr(proveedor, campo, valor)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un proveedor con ese nombre.")
+    db.refresh(proveedor)
+    return {"proveedor": {"id": proveedor.id, "nombre": proveedor.nombre, "activo": proveedor.activo}}
+
+
+@router.post("/proveedores/{proveedor_id}/desactivar")
+async def desactivar_proveedor(
+    proveedor_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_desactivar_productos(usuario.rol):
+        raise HTTPException(status_code=403, detail="Solo administración puede desactivar proveedores.")
+    proveedor = db.get(Proveedor, proveedor_id)
+    if proveedor is None:
+        raise HTTPException(status_code=404, detail="No encontramos ese proveedor.")
+    productos_activos = db.query(Producto.id).filter(
+        Producto.proveedor_id == proveedor.id,
+        Producto.activo == True,
+    ).count()
+    if productos_activos:
+        raise HTTPException(
+            status_code=409,
+            detail="Primero cambia el proveedor o desactiva los productos que lo usan.",
+        )
+    proveedor.activo = False
+    db.commit()
+    return {"ok": True, "activo": False, "proveedor_id": proveedor.id}
 
 
 @router.get("/resumen")

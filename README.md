@@ -158,6 +158,13 @@ uv run pytest -v
 | `GET` | `/api/inventario/productos` | Active product catalog with role-filtered prices; supports name/category/code search. |
 | `GET` | `/api/inventario/resumen` | Stock KPIs and role-filtered inventory values. |
 | `GET` | `/api/inventario/catalogos` | Active categories and suppliers. |
+| `GET` | `/api/inventario/catalogos/gestion` | Catalog details for administrator/warehouse. |
+| `POST` | `/api/inventario/categorias` | Create a category. |
+| `PATCH` | `/api/inventario/categorias/{id}` | Edit a category. |
+| `POST` | `/api/inventario/categorias/{id}/desactivar` | Admin-only deactivation; preserves references. |
+| `POST` | `/api/inventario/proveedores` | Create a supplier. |
+| `PATCH` | `/api/inventario/proveedores/{id}` | Edit a supplier. |
+| `POST` | `/api/inventario/proveedores/{id}/desactivar` | Admin-only deactivation; preserves references. |
 | `POST` | `/api/inventario/productos` | Create a product, permitted roles only. |
 | `PATCH` | `/api/inventario/productos/{id}` | Edit a product, permitted roles only. |
 | `POST` | `/api/inventario/productos/{id}/desactivar` | Admin-only soft delete; preserves history. |

@@ -45,4 +45,3 @@ data/
 Dockerfile
 .dockerignore
 DEPLOY.md
-README.md

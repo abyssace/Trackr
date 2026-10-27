@@ -14,7 +14,7 @@ from app.api.deps import get_current_user
 from app.db.base import get_db
 from app.db.modelos import Usuario
 from app.db.negocio import AuditoriaCambioPrecio, Empleado, Producto
-from app.servicios.backup import listar_backups
+from app.servicios.backup import backup_online, limpiar_backups
 from app.config import settings
 from app.servicios.auth import get_password_hash
 from app.servicios.roles import (
@@ -69,14 +69,15 @@ async def descargar_backup(usuario: Usuario = Depends(get_current_user)):
     if usuario.rol != Rol.ADMINISTRADOR.value:
         raise HTTPException(status_code=403, detail="Se requiere rol administrador")
 
-    backups = listar_backups(settings.BACKUP_DIR)
-    if not backups:
-        raise HTTPException(status_code=404, detail="No hay backups disponibles")
+    try:
+        backup_path = backup_online(settings.DATABASE_URL, settings.BACKUP_DIR)
+        limpiar_backups(settings.BACKUP_DIR, settings.BACKUP_RETENTION_DAYS)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"No se pudo crear el backup: {exc}")
 
-    ultimo = backups[0]
     return FileResponse(
-        ultimo,
-        filename=ultimo.name,
+        backup_path,
+        filename=backup_path.name,
         media_type="application/octet-stream",
     )
 

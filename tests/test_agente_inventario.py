@@ -1,9 +1,8 @@
 import pytest
+from langchain_core.messages import AIMessage
 
 from app.agente.agente import (
-    _extraer_cambio_minimo,
-    _respuesta_directa_herramientas,
-    _solicita_conteo_productos_activos,
+    _RESPUESTA_VACIA,
     _system_prompt,
     run_agent,
 )
@@ -142,64 +141,46 @@ def test_reporte_de_bajo_stock_es_corto_y_sin_tablas(db):
     assert "¿Qué hacer ahora?" not in reporte
 
 
-def test_resultado_de_lectura_se_entrega_sin_tablas_ni_recomendaciones():
-    resultado = _respuesta_directa_herramientas(
-        [("contar_productos_activos", "{}", "Hay 12 productos activos.")]
-    )
-    assert resultado == "Hay 12 productos activos."
-    assert "|" not in resultado
-    assert "Qué hacer" not in resultado
-    assert _respuesta_directa_herramientas(
-        [("contar_productos_activos", "{}", "Hay 12."), ("crear_pedido", "{}", "pendiente")]
-    ) is None
+class FakeModel:
+    def __init__(self, respuestas):
+        self.respuestas = list(respuestas)
+
+    def bind_tools(self, tools):
+        return self
+
+    async def ainvoke(self, messages):
+        return self.respuestas.pop(0)
 
 
 @pytest.mark.anyio
-async def test_pregunta_directa_de_conteo_usa_herramienta_sin_pedir_al_llm():
-    class FakeCountTool:
-        name = "contar_productos_activos"
+async def test_respuesta_vacia_devuelve_mensaje_de_respaldo(monkeypatch):
+    monkeypatch.setattr("app.agente.agente._modelo", lambda: FakeModel([AIMessage(content="   ")]))
 
-        async def ainvoke(self, args):
-            assert args == {}
-            return "Hay 12 productos activos."
+    reply, used = await run_agent("Hola", [], usuario=None)
 
-    reply, used = await run_agent(
-        "¿Cuántos productos activos tenemos?",
-        [FakeCountTool()],
-        usuario=None,
-    )
-    assert reply == "Hay 12 productos activos."
-    assert used == [("contar_productos_activos", "{}", "Hay 12 productos activos.")]
-    assert _solicita_conteo_productos_activos(
-        "¿Cuántos productos activos tenemos y cuáles están agotados?"
-    ) is False
+    assert reply == _RESPUESTA_VACIA
+    assert used == []
 
 
 @pytest.mark.anyio
-async def test_peticion_clara_de_minimo_usa_tool_y_pide_confirmacion():
-    class FakeUpdateTool:
-        name = "actualizar_stock_minimo"
-        received = None
+async def test_error_de_herramienta_no_expone_la_excepcion_al_llm(monkeypatch):
+    class FakeTool:
+        name = "consultar_existencia"
 
         async def ainvoke(self, args):
-            self.received = args
-            return "Voy a cambiar el mínimo. ¿Confirmas?"
+            raise RuntimeError("detalle interno de la base de datos")
 
-    tool = FakeUpdateTool()
-    reply, used = await run_agent(
-        "Puedes cambiar que el mínimo de destornilladores allen sean de 40",
-        [tool],
-        usuario=None,
+    llamada = AIMessage(
+        content="",
+        tool_calls=[{"name": "consultar_existencia", "args": {"nombre": "x"}, "id": "1"}],
     )
-    assert _extraer_cambio_minimo(
-        "Puedes cambiar que el mínimo de destornilladores allen sean de 40"
-    ) == {"producto": "destornilladores allen", "stock_minimo": 40}
-    assert tool.received == {"producto": "destornilladores allen", "stock_minimo": 40}
-    assert reply == "Voy a cambiar el mínimo. ¿Confirmas?"
-    assert used[0][0] == "actualizar_stock_minimo"
+    monkeypatch.setattr(
+        "app.agente.agente._modelo",
+        lambda: FakeModel([llamada, AIMessage(content="No pude consultarlo.")]),
+    )
 
+    reply, used = await run_agent("¿Cuánto hay de x?", [FakeTool()], usuario=None)
 
-def test_pregunta_como_hacer_cambio_no_se_ejecuta_directamente():
-    assert _extraer_cambio_minimo(
-        "¿Cómo puedo cambiar el mínimo del destornillador allen a 40?"
-    ) is None
+    assert reply == "No pude consultarlo."
+    assert used[0][2] == "Ocurrió un error al ejecutar la herramienta. Intenta de nuevo."
+    assert "detalle interno" not in used[0][2]

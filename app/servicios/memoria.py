@@ -17,12 +17,16 @@ def obtener_historial(db: Session, usuario_id: int, limite: int | None = None):
     if limite is None:
         limite = settings.MEMORIA_MENSAJES_MAX
 
-    filas = db.scalars(
-        select(Mensaje)
-        .where(Mensaje.usuario_id == usuario_id, Mensaje.rol.in_(["user", "assistant"]))
-        .order_by(Mensaje.creado_en)
-        .limit(limite)
-    ).all()
+    filas = list(
+        reversed(
+            db.scalars(
+                select(Mensaje)
+                .where(Mensaje.usuario_id == usuario_id, Mensaje.rol.in_(["user", "assistant"]))
+                .order_by(Mensaje.creado_en.desc(), Mensaje.id.desc())
+                .limit(limite)
+            ).all()
+        )
+    )
 
     mensajes = []
     for fila in filas:

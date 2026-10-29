@@ -142,12 +142,14 @@ async def historial(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    filas = (
-        db.query(Mensaje)
-        .filter(Mensaje.usuario_id == usuario.id, Mensaje.rol.in_(["user", "assistant"]))
-        .order_by(Mensaje.creado_en)
-        .limit(settings.MEMORIA_MENSAJES_MAX)
-        .all()
+    filas = list(
+        reversed(
+            db.query(Mensaje)
+            .filter(Mensaje.usuario_id == usuario.id, Mensaje.rol.in_(["user", "assistant"]))
+            .order_by(Mensaje.creado_en.desc(), Mensaje.id.desc())
+            .limit(settings.MEMORIA_MENSAJES_MAX)
+            .all()
+        )
     )
     return [
         {"rol": f.rol, "contenido": f.contenido, "creado_en": f.creado_en.isoformat()}

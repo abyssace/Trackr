@@ -20,6 +20,15 @@ from app.servicios.confirmacion import (
 from app.servicios.roles import Rol, filtrar_tools
 
 
+@pytest.fixture(autouse=True)
+def _limpiar_ejecuciones_recientes():
+    from app.servicios import confirmacion
+
+    confirmacion._ejecuciones_recientes.clear()
+    yield
+    confirmacion._ejecuciones_recientes.clear()
+
+
 def _usuario(db, rol, nombre="Usuario"):
     user = Usuario(
         nombre=nombre,
@@ -78,6 +87,31 @@ async def test_tool_de_minimo_no_escribe_sin_confirmacion_y_escribe_al_confirmar
     db.refresh(producto)
     assert resultado == "Listo. El mínimo de Destornillador allen ahora es 40 piezas."
     assert producto.stock_minimo == 40
+
+
+@pytest.mark.anyio
+async def test_misma_escritura_repetida_no_se_duplica(db):
+    usuario = _usuario(db, Rol.ALMACEN.value, "Almacén repetido")
+    producto = Producto(
+        nombre="Tornillo repetido",
+        tipo="componente",
+        unidad_medida="pieza",
+        stock_minimo=10,
+        activo=True,
+    )
+    db.add(producto)
+    db.commit()
+    tool = next(t for t in make_escritura_tools(usuario, db) if t.name == "actualizar_stock_minimo")
+    args = {"producto": "Tornillo repetido", "stock_minimo": 40, "confirmado": True}
+
+    await tool.ainvoke(args)
+    producto.stock_minimo = 60
+    db.commit()
+    repetido = await tool.ainvoke(args)
+    db.refresh(producto)
+
+    assert repetido == "Esa acción ya se registró hace un momento; no la repetí."
+    assert producto.stock_minimo == 60
 
 
 def await_confirmar(db, pendiente, usuario):

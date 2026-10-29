@@ -37,7 +37,7 @@ producto A: cantidad
 producto B: cantidad
 producto C: cantidad
 (Si/No)" Ya finalizando Si para confirmar y guardar, No para volver a repetir el pedido y capturer correctamente todo.
-editar_pedido: Si se pide editar un pedido solo sera para cambiar el estado del pedido. Los pedidos a editar son pedidos existentes; el estado puede ser pendiente, enviado, entregado o cancelado. Muestra las opciones de estado para que el empleado elija una. Se debe guardar el id del empleado que edita el estado.
+editar_pedido: Sirve para cambiar los productos y cantidades de un pedido que todavía esta pendiente. Pide el numero de pedido o el nombre del cliente y la nueva lista de productos con sus cantidades. Si el pedido ya no esta pendiente, dile que no se puede editar.
 cancelar_pedido: Si se pide cancelar un pedido podras recibir el numero de pedido o el nombre del cliente. Revisa que el pedido no este en estado entregado, ya que no tiene sentido cancelar un pedido ya entregado. Si un cliente tiene mas de un pedido enlista los pedidos con su cliente_id y fecha_pedido, para que el empleado pueda elegir cual cancelar
 "Elige que opcion cancelar:
 1.pedido1: cliente_id fecha: fecha_pedido
@@ -128,10 +128,10 @@ Si responde "Si", guarda el pedido. Si responde "No", repite la captura para cor
 
 Editar pedido
 
-Solo se puede cambiar el estado del pedido.
-Pide el numero de pedido o el cliente.
-Muestra las opciones de estado disponibles (pendiente, enviado, entregado, cancelado) para que el empleado elija una.
-Confirma el cambio con Si/No y ejecutalo.
+Solo se pueden editar pedidos pendientes.
+Pide el numero de pedido o el nombre del cliente.
+Pide la nueva lista de productos con sus cantidades, en el mismo formato que crear pedido.
+Muestra lo capturado y confirma con Si/No antes de ejecutar.
 
 Cancelar pedido
 

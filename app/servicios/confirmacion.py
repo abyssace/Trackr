@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Awaitable
@@ -119,18 +120,41 @@ async def confirmar_pendiente(
     return resultado
 
 
+VENTANA_DUPLICADOS_SEGUNDOS = 60
+_ejecuciones_recientes: dict[str, float] = {}
+
+
+def _clave_duplicado(usuario_id: int, tool: str, args: dict) -> str:
+    return f"{usuario_id}:{tool}:{json.dumps(args, sort_keys=True, default=str)}"
+
+
+def _limpiar_ejecuciones_recientes(ahora: float) -> None:
+    for clave, momento in list(_ejecuciones_recientes.items()):
+        if ahora - momento > VENTANA_DUPLICADOS_SEGUNDOS:
+            del _ejecuciones_recientes[clave]
+
+
 async def ejecutar_accion_directa(
     db: Session,
     tool: str,
     args: dict,
     usuario: Usuario,
 ) -> str:
-    """Ejecuta una escritura confirmada en la conversación, sin acción pendiente."""
+    """Ejecuta una escritura confirmada en la conversación, sin acción pendiente.
+
+    Bloquea repetir la misma acción con los mismos datos durante la ventana de duplicados.
+    """
     ejecutor = _ejecutores.get(tool)
     if ejecutor is None:
         raise ValueError(f"No hay ejecutor registrado para '{tool}'.")
     if not puede_usar_tool(usuario.rol, tool):
         raise PermissionError(f"El rol '{usuario.rol}' no puede ejecutar '{tool}'.")
+
+    ahora = time.monotonic()
+    _limpiar_ejecuciones_recientes(ahora)
+    clave = _clave_duplicado(usuario.id, tool, args)
+    if clave in _ejecuciones_recientes:
+        return "Esa acción ya se registró hace un momento; no la repetí."
 
     args = {
         **args,
@@ -145,4 +169,5 @@ async def ejecutar_accion_directa(
         db.rollback()
         raise
     db.commit()
+    _ejecuciones_recientes[clave] = ahora
     return resultado

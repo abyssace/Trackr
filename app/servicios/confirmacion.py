@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Awaitable
 
@@ -110,6 +111,35 @@ async def confirmar_pendiente(
             resultado = await ejecutor(db, args)
             pendiente.estado = "confirmada"
             pendiente.confirmado_por_usuario_id = usuario.id
+            db.flush()
+    except Exception:
+        db.rollback()
+        raise
+    db.commit()
+    return resultado
+
+
+async def ejecutar_accion_directa(
+    db: Session,
+    tool: str,
+    args: dict,
+    usuario: Usuario,
+) -> str:
+    """Ejecuta una escritura confirmada en la conversación, sin acción pendiente."""
+    ejecutor = _ejecutores.get(tool)
+    if ejecutor is None:
+        raise ValueError(f"No hay ejecutor registrado para '{tool}'.")
+    if not puede_usar_tool(usuario.rol, tool):
+        raise PermissionError(f"El rol '{usuario.rol}' no puede ejecutar '{tool}'.")
+
+    args = {
+        **args,
+        "_responsable_usuario_id": usuario.id,
+        "_idempotency_base": f"directo:{uuid.uuid4().hex}",
+    }
+    try:
+        with db.begin_nested():
+            resultado = await ejecutor(db, args)
             db.flush()
     except Exception:
         db.rollback()

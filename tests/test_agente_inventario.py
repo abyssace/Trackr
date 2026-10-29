@@ -51,7 +51,8 @@ def test_tool_cuenta_productos_activos_y_excluye_inactivos(db):
     assert respuesta == "Hay 2 productos activos."
 
 
-def test_tool_de_minimo_crea_pendiente_y_aplica_solo_al_confirmar(db):
+@pytest.mark.anyio
+async def test_tool_de_minimo_no_escribe_sin_confirmacion_y_escribe_al_confirmar(db):
     usuario = _usuario(db, Rol.ALMACEN.value, "Almacén")
     producto = Producto(
         nombre="Destornillador allen",
@@ -64,18 +65,16 @@ def test_tool_de_minimo_crea_pendiente_y_aplica_solo_al_confirmar(db):
     db.commit()
     tool = next(t for t in make_escritura_tools(usuario, db) if t.name == "actualizar_stock_minimo")
 
-    resumen = tool.invoke({"producto": "destornilladores allen", "stock_minimo": 40})
-    pendiente = obtener_pendiente(db, usuario.id)
-
-    assert "102526" in resumen
-    assert "40 piezas" in resumen
-    assert "¿Confirmas?" in resumen
-    assert pendiente is not None
-    assert pendiente.tool == "actualizar_stock_minimo"
+    respuesta = await tool.ainvoke({"producto": "destornilladores allen", "stock_minimo": 40})
     db.refresh(producto)
-    assert producto.stock_minimo == 102526
 
-    resultado = await_confirmar(db, pendiente, usuario)
+    assert respuesta == "falta confirmacion"
+    assert producto.stock_minimo == 102526
+    assert obtener_pendiente(db, usuario.id) is None
+
+    resultado = await tool.ainvoke(
+        {"producto": "destornilladores allen", "stock_minimo": 40, "confirmado": True}
+    )
     db.refresh(producto)
     assert resultado == "Listo. El mínimo de Destornillador allen ahora es 40 piezas."
     assert producto.stock_minimo == 40

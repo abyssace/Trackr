@@ -37,6 +37,31 @@ def test_historial_isolated_between_users(logged_client, usuario, otro_usuario, 
     app.dependency_overrides.clear()
 
 
+def test_historial_toma_los_20_mensajes_mas_recientes(usuario, db):
+    from datetime import datetime, timedelta
+
+    from app.db.modelos import Mensaje
+    from app.servicios.memoria import obtener_historial
+
+    base = datetime(2026, 1, 1)
+    for i in range(25):
+        db.add(
+            Mensaje(
+                usuario_id=usuario.id,
+                rol="user",
+                contenido=f"m{i}",
+                creado_en=base + timedelta(minutes=i),
+            )
+        )
+    db.commit()
+
+    contenidos = [m.content for m in obtener_historial(db, usuario.id)]
+
+    assert len(contenidos) == 20
+    assert contenidos[0] == "m5"
+    assert contenidos[-1] == "m24"
+
+
 def test_historial_includes_user_and_assistant(logged_client, usuario, db):
     usuario.rol = Rol.VENDEDOR.value
     db.commit()

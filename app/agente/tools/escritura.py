@@ -4,20 +4,25 @@ from langchain_core.tools import tool
 from sqlalchemy.orm import Session
 
 from app.db.modelos import Usuario
-from app.db.negocio import Cliente, Empleado, Pedido, Producto
-from app.servicios.confirmacion import crear_pendiente
+from app.db.negocio import Empleado
+from app.servicios.confirmacion import ejecutar_accion_directa
 from app.servicios.inventario import (
     buscar_clientes,
     buscar_empleados,
     buscar_pedidos,
     buscar_productos,
-    stock_disponible,
-    unidad_con_cantidad,
 )
 from app.servicios.roles import puede_usar_tool
 
 # Importar para registrar los ejecutores en el dispatcher.
 import app.agente.tools.ejecutores  # noqa: F401
+
+
+_CONFIRMADO = Field(
+    default=False,
+    description="true solo si el empleado respondió Sí a los datos mostrados; si no, false",
+)
+_FALTA_CONFIRMACION = "falta confirmacion"
 
 
 def _candidatos_str(candidatos, tipo):
@@ -107,16 +112,6 @@ def _parse_items_json(db: Session, items_json: str):
     return items, None
 
 
-def _resumen_items(db: Session, items: list) -> str:
-    lineas = []
-    for it in items:
-        disponible = stock_disponible(db, it["producto_id"])
-        lineas.append(
-            f"- {it['producto_nombre']}: {it['cantidad']} piezas (disponible actual: {disponible})"
-        )
-    return "\n".join(lineas)
-
-
 class CrearPedidoInput(BaseModel):
     cliente: str = Field(description="Nombre del cliente")
     items_json: str = Field(
@@ -126,6 +121,7 @@ class CrearPedidoInput(BaseModel):
         default=None, description="directa o paqueteria (opcional)"
     )
     observaciones: str | None = Field(default=None, description="Notas adicionales")
+    confirmado: bool = _CONFIRMADO
 
     @field_validator("tipo_entrega")
     @classmethod
@@ -141,10 +137,12 @@ class CrearPedidoInput(BaseModel):
 class EditarPedidoInput(BaseModel):
     pedido: str = Field(description="Número de pedido o nombre del cliente")
     items_json: str = Field(description='Nueva lista de productos en JSON')
+    confirmado: bool = _CONFIRMADO
 
 
 class CancelarPedidoInput(BaseModel):
     pedido: str = Field(description="Número de pedido o nombre del cliente")
+    confirmado: bool = _CONFIRMADO
 
 
 class RegistrarEntradaInput(BaseModel):
@@ -156,37 +154,45 @@ class RegistrarEntradaInput(BaseModel):
     )
     referencia: str | None = Field(default=None, description="Factura, remisión, etc.")
     observaciones: str | None = Field(default=None)
+    confirmado: bool = _CONFIRMADO
 
 
 class RegistrarTerminadoInput(BaseModel):
     producto: str = Field(description="Nombre del producto terminado")
     cantidad: int = Field(description="Cantidad entera positiva", ge=1)
+    confirmado: bool = _CONFIRMADO
 
 
 class RegistrarEnvioInput(BaseModel):
     pedido: str = Field(description="Número de pedido o cliente")
     paqueteria: str = Field(description="Nombre de la paquetería")
     guia: str = Field(description="Número de guía")
+    confirmado: bool = _CONFIRMADO
 
 
 class MarcarEntregadoInput(BaseModel):
     pedido: str = Field(description="Número de pedido o cliente")
+    confirmado: bool = _CONFIRMADO
 
 
 class ActualizarStockMinimoInput(BaseModel):
     producto: str = Field(description="Nombre o código del producto")
     stock_minimo: int = Field(description="Nuevo mínimo de alerta; entero igual o mayor que cero", ge=0)
+    confirmado: bool = _CONFIRMADO
 
 
 def make_escritura_tools(usuario: Usuario, db: Session):
     @tool(args_schema=CrearPedidoInput)
-    def crear_pedido(
+    async def crear_pedido(
         cliente: str,
         items_json: str,
         tipo_entrega: str | None = None,
         observaciones: str | None = None,
+        confirmado: bool = False,
     ) -> str:
-        """Crea un pedido nuevo. Requiere confirmación."""
+        """Crea un pedido nuevo. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         cliente_obj, error = _resolver_cliente(db, cliente)
         if error:
             return error
@@ -212,19 +218,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             "tipo_entrega": tipo_entrega,
             "observaciones": observaciones,
         }
-
-        resumen = (
-            f"Voy a crear un pedido para {cliente_obj.nombre}:\n"
-            f"{_resumen_items(db, items)}\n\n"
-            f"Entrega: {tipo_entrega or 'por definir'}.\n"
-            f"¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "crear_pedido", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "crear_pedido", args, usuario)
 
     @tool(args_schema=EditarPedidoInput)
-    def editar_pedido(pedido: str, items_json: str) -> str:
-        """Edita un pedido pendiente. Requiere confirmación."""
+    async def editar_pedido(pedido: str, items_json: str, confirmado: bool = False) -> str:
+        """Edita los productos de un pedido pendiente. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         pedido_obj, error = _resolver_pedido(db, pedido)
         if error:
             return error
@@ -246,18 +246,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
                 for it in items
             ],
         }
-
-        resumen = (
-            f"Voy a editar el pedido {pedido_obj.id} ({pedido_obj.cliente.nombre}):\n"
-            f"{_resumen_items(db, items)}\n\n"
-            f"¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "editar_pedido", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "editar_pedido", args, usuario)
 
     @tool(args_schema=CancelarPedidoInput)
-    def cancelar_pedido(pedido: str) -> str:
-        """Cancela un pedido. Requiere confirmación."""
+    async def cancelar_pedido(pedido: str, confirmado: bool = False) -> str:
+        """Cancela un pedido. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         pedido_obj, error = _resolver_pedido(db, pedido)
         if error:
             return error
@@ -265,23 +260,21 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             return f"El pedido {pedido_obj.id} ya está {pedido_obj.estado}; no se puede cancelar."
 
         args = {"pedido_id": pedido_obj.id}
-        resumen = (
-            f"Voy a cancelar el pedido {pedido_obj.id} de {pedido_obj.cliente.nombre}. "
-            f"Si ya se descontó inventario, se revertirá. ¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "cancelar_pedido", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "cancelar_pedido", args, usuario)
 
     @tool(args_schema=RegistrarEntradaInput)
-    def registrar_entrada_mercancia(
+    async def registrar_entrada_mercancia(
         producto: str,
         cantidad: int,
         empleado_recibe: str | None = None,
         empleado_entrega: str | None = None,
         referencia: str | None = None,
         observaciones: str | None = None,
+        confirmado: bool = False,
     ) -> str:
-        """Registra una entrada de mercancía al inventario. Requiere confirmación."""
+        """Registra una entrada de mercancía al inventario. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         producto_obj, error = _resolver_producto(db, producto)
         if error:
             return error
@@ -301,20 +294,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             "referencia": referencia,
             "observaciones": observaciones,
         }
-
-        resumen = (
-            f"Voy a registrar una entrada de {cantidad} {producto_obj.unidad_medida or 'piezas'} "
-            f"de {producto_obj.nombre}.\n"
-        )
-        if referencia:
-            resumen += f"Referencia: {referencia}.\n"
-        resumen += "¿Confirmas?"
-        crear_pendiente(db, usuario.id, "registrar_entrada_mercancia", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "registrar_entrada_mercancia", args, usuario)
 
     @tool(args_schema=RegistrarTerminadoInput)
-    def registrar_terminado(producto: str, cantidad: int) -> str:
-        """Registra la producción de productos terminados. Requiere confirmación."""
+    async def registrar_terminado(producto: str, cantidad: int, confirmado: bool = False) -> str:
+        """Registra la producción de productos terminados. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         producto_obj, error = _resolver_producto(db, producto)
         if error:
             return error
@@ -322,17 +308,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             return f"{producto_obj.nombre} no es un producto terminado."
 
         args = {"producto_id": producto_obj.id, "cantidad": cantidad}
-        resumen = (
-            f"Voy a registrar {cantidad} {producto_obj.unidad_medida or 'piezas'} de "
-            f"{producto_obj.nombre} como terminados. Se descontarán los componentes de la receta. "
-            f"¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "registrar_terminado", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "registrar_terminado", args, usuario)
 
     @tool(args_schema=RegistrarEnvioInput)
-    def registrar_envio(pedido: str, paqueteria: str, guia: str) -> str:
-        """Marca un pedido como enviado por paquetería. Requiere confirmación."""
+    async def registrar_envio(pedido: str, paqueteria: str, guia: str, confirmado: bool = False) -> str:
+        """Marca un pedido como enviado por paquetería. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         pedido_obj, error = _resolver_pedido(db, pedido)
         if error:
             return error
@@ -344,16 +326,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             "paqueteria": paqueteria,
             "guia": guia,
         }
-        resumen = (
-            f"Voy a marcar el pedido {pedido_obj.id} como enviado por {paqueteria}, "
-            f"guía {guia}. Se descontará inventario. ¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "registrar_envio", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "registrar_envio", args, usuario)
 
     @tool(args_schema=MarcarEntregadoInput)
-    def marcar_entregado(pedido: str) -> str:
-        """Marca un pedido como entregado. Requiere confirmación."""
+    async def marcar_entregado(pedido: str, confirmado: bool = False) -> str:
+        """Marca un pedido como entregado. Escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         pedido_obj, error = _resolver_pedido(db, pedido)
         if error:
             return error
@@ -363,16 +342,13 @@ def make_escritura_tools(usuario: Usuario, db: Session):
             return f"El pedido {pedido_obj.id} está cancelado."
 
         args = {"pedido_id": pedido_obj.id}
-        resumen = (
-            f"Voy a marcar el pedido {pedido_obj.id} como entregado. "
-            f"Se descontará inventario si aún no se había hecho. ¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "marcar_entregado", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "marcar_entregado", args, usuario)
 
     @tool(args_schema=ActualizarStockMinimoInput)
-    def actualizar_stock_minimo(producto: str, stock_minimo: int) -> str:
-        """Cambia el mínimo de alerta de un producto. Solo administración/almacén; requiere confirmación."""
+    async def actualizar_stock_minimo(producto: str, stock_minimo: int, confirmado: bool = False) -> str:
+        """Cambia el mínimo de alerta de un producto. Solo administración/almacén; escribe solo si confirmado es true, después de que el empleado respondió Sí."""
+        if not confirmado:
+            return _FALTA_CONFIRMACION
         if not puede_usar_tool(usuario.rol, "actualizar_stock_minimo"):
             return "Tu perfil no tiene permiso para cambiar mínimos de stock."
         producto_obj, error = _resolver_producto(db, producto)
@@ -381,16 +357,8 @@ def make_escritura_tools(usuario: Usuario, db: Session):
         if producto_obj.stock_minimo == stock_minimo:
             return f"{producto_obj.nombre} ya tiene un mínimo de {stock_minimo}."
 
-        anterior = producto_obj.stock_minimo
         args = {"producto_id": producto_obj.id, "stock_minimo": stock_minimo}
-        unidad = unidad_con_cantidad(producto_obj.unidad_medida, stock_minimo)
-        resumen = (
-            f"Voy a cambiar el mínimo de {producto_obj.nombre} de "
-            f"{anterior if anterior is not None else 'sin configurar'} a "
-            f"{stock_minimo} {unidad}. ¿Confirmas?"
-        )
-        crear_pendiente(db, usuario.id, "actualizar_stock_minimo", args, resumen)
-        return resumen
+        return await ejecutar_accion_directa(db, "actualizar_stock_minimo", args, usuario)
 
     return [
         crear_pedido,

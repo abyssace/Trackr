@@ -64,11 +64,24 @@ def test_almacen_crea_y_edita_categoria_y_proveedor(client, db):
 
 
 @pytest.mark.parametrize("rol", [Rol.VENDEDOR.value, Rol.ENSAMBLADOR.value, Rol.SOLO_LECTURA.value])
-def test_roles_sin_edicion_no_pueden_crear_catalogos(client, db, rol):
+def test_roles_sin_edicion_no_pueden_crear_categorias(client, db, rol):
     user = _crear_usuario(db, rol)
     _login(client, user)
     assert client.post("/api/inventario/categorias", json={"nombre": "Bloqueada"}).status_code == 403
+
+
+@pytest.mark.parametrize("rol", [Rol.ENSAMBLADOR.value, Rol.SOLO_LECTURA.value])
+def test_roles_sin_alta_no_pueden_crear_proveedores(client, db, rol):
+    user = _crear_usuario(db, rol)
+    _login(client, user)
     assert client.post("/api/inventario/proveedores", json={"nombre": "Bloqueado"}).status_code == 403
+
+
+def test_vendedor_puede_crear_proveedor_pero_no_categoria(client, db):
+    user = _crear_usuario(db, Rol.VENDEDOR.value)
+    _login(client, user)
+    assert client.post("/api/inventario/proveedores", json={"nombre": "Proveedor Vendedor"}).status_code == 201
+    assert client.post("/api/inventario/categorias", json={"nombre": "Bloqueada"}).status_code == 403
 
 
 def test_almacen_puede_crear_y_desactivar_catalogos_sin_referencias(client, db):

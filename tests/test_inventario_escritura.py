@@ -285,7 +285,7 @@ def test_almacen_no_puede_enviar_campos_de_precio(client, db):
     [
         (Rol.ADMINISTRADOR.value, 201),
         (Rol.ALMACEN.value, 201),
-        (Rol.VENDEDOR.value, 403),
+        (Rol.VENDEDOR.value, 201),
         (Rol.ENSAMBLADOR.value, 403),
         (Rol.SOLO_LECTURA.value, 403),
     ],

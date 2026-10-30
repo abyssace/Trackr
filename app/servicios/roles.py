@@ -67,6 +67,10 @@ def roles_validos() -> list[str]:
     return [r.value for r in Rol]
 
 
+def puede_crear_registros(rol: str | None) -> bool:
+    return rol in {Rol.VENDEDOR.value, Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
+
+
 def puede_editar_productos(rol: str | None) -> bool:
     return rol in {Rol.ALMACEN.value, Rol.ADMINISTRADOR.value}
 

@@ -816,32 +816,16 @@
                 <span class="menu-item-title">Agregar proveedor</span>
                 <span class="menu-item-sub">Empresa aliada y datos de contacto</span>
               </button>
+              <button id="openNewClientBtn" type="button" class="menu-item" role="menuitem">
+                <span class="menu-item-title">Agregar cliente</span>
+                <span class="menu-item-sub">Datos fiscales y de contacto para pedidos</span>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       <div id="inventoryKpis" class="kpi-strip" aria-live="polite">
-        <article class="inventory-kpi">
-          <span class="kpi-label">Total SKUs</span>
-          <strong id="kpiTotal">—</strong>
-          <span class="kpi-note">Productos activos</span>
-        </article>
-        <article class="inventory-kpi kpi-ok">
-          <span class="kpi-label">Stock óptimo</span>
-          <strong id="kpiOptimo">—</strong>
-          <span class="kpi-note">Sin alerta de existencias</span>
-        </article>
-        <article class="inventory-kpi kpi-warn">
-          <span class="kpi-label">En advertencia</span>
-          <strong id="kpiAdvertencia">—</strong>
-          <span class="kpi-note">Disponible en o bajo el mínimo</span>
-        </article>
-        <article class="inventory-kpi kpi-crit">
-          <span class="kpi-label">Crítico / quiebre</span>
-          <strong id="kpiCritico">—</strong>
-          <span class="kpi-note">Existencia en o bajo el mínimo</span>
-        </article>
         <article id="kpiCostoCard" class="inventory-kpi hidden">
           <span class="kpi-label">Valor a costo (MXN)</span>
           <strong id="kpiValorCosto">—</strong>
@@ -1051,6 +1035,8 @@
           </aside>
         </div>
 
+      </section>
+
         <div id="productModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="productFormTitle">
           <div class="modal-backdrop" data-close></div>
           <div class="modal-panel">
@@ -1110,6 +1096,52 @@
           </div>
         </div>
 
+        <div id="clientModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="clientFormTitle">
+          <div class="modal-backdrop" data-close></div>
+          <div class="modal-panel">
+            <form id="clientForm" class="modal-form">
+              <div class="modal-head">
+                <h4 id="clientFormTitle">Agregar cliente</h4>
+                <button type="button" class="icon-btn" data-close aria-label="Cerrar">×</button>
+              </div>
+              <div class="form-grid-2">
+                <div class="span-2">
+                  <label for="clientName">Nombre del cliente</label>
+                  <input id="clientName" type="text" maxlength="150" required />
+                </div>
+                <div class="span-2">
+                  <label for="clientBusinessName">Razón social (opcional)</label>
+                  <input id="clientBusinessName" type="text" maxlength="150" />
+                </div>
+                <div>
+                  <label for="clientRfc">RFC (opcional, solo si requiere factura)</label>
+                  <input id="clientRfc" type="text" maxlength="13" autocomplete="off" />
+                </div>
+                <div>
+                  <label for="clientPhone">Teléfono (opcional)</label>
+                  <input id="clientPhone" type="tel" maxlength="15" />
+                </div>
+                <div>
+                  <label for="clientEmail">Correo (opcional)</label>
+                  <input id="clientEmail" type="email" maxlength="100" />
+                </div>
+                <div>
+                  <label for="clientContact">Persona de contacto (opcional)</label>
+                  <input id="clientContact" type="text" maxlength="100" />
+                </div>
+                <div class="span-2">
+                  <label for="clientAddress">Dirección (opcional)</label>
+                  <input id="clientAddress" type="text" maxlength="255" />
+                </div>
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn-ghost" data-close>Cerrar</button>
+                <button id="saveClientBtn" type="submit">Guardar cliente</button>
+              </div>
+              <p id="clientFormMessage" class="form-error" role="status"></p>
+            </form>
+          </div>
+        </div>
         <div id="supplierModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="supplierFormTitle">
           <div class="modal-backdrop" data-close></div>
           <div class="modal-panel">
@@ -1143,11 +1175,58 @@
             </form>
           </div>
         </div>
-      </section>
-
     </section>
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script>
+    const clientForm = document.getElementById('clientForm');
+    const clientFormMessage = document.getElementById('clientFormMessage');
+    const saveClientBtn = document.getElementById('saveClientBtn');
+
+    document.getElementById('openNewClientBtn').addEventListener('click', () => {
+      setMenuNuevo(false);
+      clientForm.reset();
+      clientFormMessage.textContent = '';
+      abrirModal('clientModal');
+    });
+
+    clientForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const campo = id => document.getElementById(id).value.trim() || null;
+      const payload = {
+        nombre: campo('clientName') ?? '',
+        razon_social: campo('clientBusinessName'),
+        rfc: campo('clientRfc'),
+        telefono: campo('clientPhone'),
+        correo: campo('clientEmail'),
+        contacto: campo('clientContact'),
+        direccion: campo('clientAddress'),
+      };
+      saveClientBtn.disabled = true;
+      clientFormMessage.textContent = 'Guardando…';
+      try {
+        const response = await fetch('/api/inventario/clientes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const detalle = Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail;
+          throw new Error((detalle || 'No se pudo guardar el cliente.').replace(/^Value error, /, ''));
+        }
+        clientForm.reset();
+        clientFormMessage.textContent = '';
+        cerrarModal('clientModal');
+        mostrarAviso(`Cliente ${data.cliente.nombre} creado.`);
+      } catch (error) {
+        clientFormMessage.textContent = error.message || 'Ocurrió un error al guardar el cliente.';
+      } finally {
+        saveClientBtn.disabled = false;
+      }
+    });
+  </script>
   </main>
 
   <script>
@@ -1286,10 +1365,12 @@
       document.getElementById('showChatBtn').removeAttribute('aria-current');
       const canManage = ['administrador', 'almacen'].includes(currentRole);
       inventoryWritePanel.classList.toggle('hidden', !canManage);
-      document.getElementById('inventoryActions').classList.toggle('hidden', !canManage);
+      const canCreate = ['administrador', 'almacen', 'vendedor'].includes(currentRole);
+      document.getElementById('inventoryActions').classList.toggle('hidden', !canCreate);
+      document.getElementById('showHistoryBtn').classList.toggle('hidden', !canManage);
       productPriceFields.classList.toggle('hidden', currentRole !== 'administrador');
       await loadInventorySummary();
-      if (canManage) await loadCatalogs();
+      if (canCreate) await loadCatalogs();
       await loadProducts(productSearch.value);
       if (canManage) await loadMovementHistory();
     }
@@ -1605,42 +1686,29 @@
     }
 
     async function loadInventorySummary() {
-      const kpiIds = ['kpiTotal', 'kpiOptimo', 'kpiAdvertencia', 'kpiCritico'];
       try {
-        const [resumenRes, productosRes] = await Promise.all([
-          fetch('/api/inventario/resumen', { credentials: 'same-origin' }),
-          fetch('/api/inventario/productos', { credentials: 'same-origin' }),
-        ]);
-        if (!resumenRes.ok || !productosRes.ok) throw new Error('No se pudo cargar el resumen.');
-        const resumen = await resumenRes.json();
-        const productos = (await productosRes.json()).productos || [];
-        const criticos = productos.filter(product => product.bajo_minimo).length;
-        const advertencias = productos.filter(product => !product.bajo_minimo && product.disponible_bajo_minimo).length;
-        document.getElementById('kpiTotal').textContent = String(productos.length);
-        document.getElementById('kpiOptimo').textContent = String(productos.length - criticos - advertencias);
-        document.getElementById('kpiAdvertencia').textContent = String(advertencias);
-        document.getElementById('kpiCritico').textContent = String(criticos);
-
-        const costoCard = document.getElementById('kpiCostoCard');
-        const ventaCard = document.getElementById('kpiVentaCard');
-        costoCard.classList.toggle('hidden', !Object.hasOwn(resumen, 'valor_inventario_costo_mxn'));
-        ventaCard.classList.toggle('hidden', !Object.hasOwn(resumen, 'valor_inventario_venta_mxn'));
-        if (Object.hasOwn(resumen, 'valor_inventario_costo_mxn')) {
+        const response = await fetch('/api/inventario/resumen', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('No se pudo cargar el resumen.');
+        const resumen = await response.json();
+        const tieneCosto = Object.hasOwn(resumen, 'valor_inventario_costo_mxn');
+        const tieneVenta = Object.hasOwn(resumen, 'valor_inventario_venta_mxn');
+        document.getElementById('kpiCostoCard').classList.toggle('hidden', !tieneCosto);
+        document.getElementById('kpiVentaCard').classList.toggle('hidden', !tieneVenta);
+        document.getElementById('inventoryKpis').classList.toggle('hidden', !tieneCosto && !tieneVenta);
+        if (tieneCosto) {
           document.getElementById('kpiValorCosto').textContent = monedaMx(resumen.valor_inventario_costo_mxn);
           document.getElementById('kpiCostoNote').textContent = `${resumen.productos_sin_precio_compra} sin precio de compra`;
         }
-        if (Object.hasOwn(resumen, 'valor_inventario_venta_mxn')) {
+        if (tieneVenta) {
           document.getElementById('kpiValorVenta').textContent = monedaMx(resumen.valor_inventario_venta_mxn);
           document.getElementById('kpiVentaNote').textContent = `${resumen.productos_sin_precio_venta} sin precio de venta`;
         }
         drawCategoryChart(resumen.stock_por_categoria || []);
       } catch (error) {
-        kpiIds.forEach(id => { document.getElementById(id).textContent = '—'; });
         inventoryMessage.textContent = error.message || 'No se pudo cargar el resumen.';
         inventoryMessage.classList.remove('hidden');
       }
     }
-
 
     function drawCategoryChart(rows) {
       categoryChart.replaceChildren();
@@ -1927,7 +1995,7 @@
         rellenarSelect(productSupplier, data.proveedores || [], 'Sin proveedor');
         rellenarSelect(historyUser, data.usuarios || [], 'Todos');
         await loadMovementProductOptions();
-        await loadCatalogManagement();
+        if (['administrador', 'almacen'].includes(currentRole)) await loadCatalogManagement();
       } catch (error) {
         productFormMessage.textContent = error.message;
       }

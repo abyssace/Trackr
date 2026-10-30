@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from app.db.modelos import Usuario
 from app.db.negocio import (
     AuditoriaCambioPrecio,
     Categoria,
+    Cliente,
     MovimientoInventario,
     Producto,
     Proveedor,
@@ -28,6 +30,7 @@ from app.servicios.inventario import (
 from app.servicios.roles import (
     puede_desactivar_catalogos,
     puede_desactivar_productos,
+    puede_crear_registros,
     puede_editar_productos,
     puede_registrar_movimientos,
     puede_ver_historial_inventario,
@@ -190,6 +193,57 @@ class ProveedorActualizar(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("Escribe el nombre del proveedor.")
+        return value
+
+
+class ClienteCrear(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str = Field(min_length=1, max_length=150)
+    razon_social: str | None = Field(default=None, max_length=150)
+    rfc: str | None = Field(default=None, max_length=13)
+    direccion: str | None = Field(default=None, max_length=255)
+    telefono: str | None = Field(default=None, max_length=15)
+    correo: str | None = Field(default=None, max_length=100)
+    contacto: str | None = Field(default=None, max_length=100)
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Escribe el nombre del cliente.")
+        return value
+
+    @field_validator("razon_social", "direccion", "telefono", "contacto")
+    @classmethod
+    def texto_opcional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("rfc")
+    @classmethod
+    def validar_rfc(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().upper()
+        if not value:
+            return None
+        if len(value) not in (12, 13) or not value.isalnum():
+            raise ValueError("El RFC debe tener 12 o 13 letras y números.")
+        return value
+
+    @field_validator("correo")
+    @classmethod
+    def validar_correo(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if "@" not in value or value.startswith("@") or value.endswith("@"):
+            raise ValueError("Escribe un correo válido.")
         return value
 
 
@@ -418,7 +472,7 @@ async def crear_proveedor(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    if not puede_editar_productos(usuario.rol):
+    if not puede_crear_registros(usuario.rol):
         raise HTTPException(status_code=403, detail="No tienes permiso para crear proveedores.")
     _validar_nombre_catalogo(db, Proveedor, payload.nombre)
     proveedor = Proveedor(**payload.model_dump(), activo=True)
@@ -481,6 +535,28 @@ async def desactivar_proveedor(
     proveedor.activo = False
     db.commit()
     return {"ok": True, "activo": False, "proveedor_id": proveedor.id}
+
+
+@router.post("/clientes", status_code=201)
+async def crear_cliente(
+    payload: ClienteCrear,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    if not puede_crear_registros(usuario.rol):
+        raise HTTPException(status_code=403, detail="No tienes permiso para crear clientes.")
+    existente = (
+        db.query(Cliente)
+        .filter(func.lower(Cliente.nombre) == payload.nombre.lower())
+        .first()
+    )
+    if existente is not None:
+        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese nombre.")
+    cliente = Cliente(**payload.model_dump())
+    db.add(cliente)
+    db.commit()
+    db.refresh(cliente)
+    return {"cliente": {"id": cliente.id, "nombre": cliente.nombre}}
 
 
 @router.get("/resumen")
@@ -559,7 +635,7 @@ async def crear_producto(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ):
-    if not puede_editar_productos(usuario.rol):
+    if not puede_crear_registros(usuario.rol):
         raise HTTPException(status_code=403, detail="No tienes permiso para crear productos.")
     datos = payload.model_dump()
     _validar_campos_precio(usuario, payload.model_fields_set)
